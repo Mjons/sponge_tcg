@@ -2507,7 +2507,41 @@
           .forEach(
             (el) => (el.onclick = () => openLibCard(parseInt(el.dataset.lib))),
           );
+        if (LIB_VIEW === "full") fitFullView();
       }
+      // Full view = the whole collection in ONE screen. Pick the fewest columns
+      // (=> biggest cards) whose resulting rows still fit the grid's height, no scroll.
+      function fitFullView() {
+        const grid = document.querySelector(".libgrid.full");
+        if (!grid) return;
+        const n = POOL.length;
+        const cs = getComputedStyle(grid);
+        const gap = parseFloat(cs.rowGap) || 6;
+        const W =
+          grid.clientWidth -
+          parseFloat(cs.paddingLeft) -
+          parseFloat(cs.paddingRight);
+        const H =
+          grid.clientHeight -
+          parseFloat(cs.paddingTop) -
+          parseFloat(cs.paddingBottom);
+        if (W <= 0 || H <= 0) return;
+        const ASPECT = 1.5; // card height / width (2:3)
+        let cols = n;
+        for (let c = 1; c <= n; c++) {
+          const w = (W - (c - 1) * gap) / c;
+          const rows = Math.ceil(n / c);
+          const need = rows * (w * ASPECT) + (rows - 1) * gap;
+          if (need <= H) {
+            cols = c;
+            break;
+          }
+        }
+        grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      }
+      window.addEventListener("resize", () => {
+        if (document.querySelector(".libgrid.full")) fitFullView();
+      });
       function setLibView(v) {
         if (LIB_VIEW === v) return;
         SFX.play("viewToggle");
