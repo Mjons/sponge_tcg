@@ -1636,10 +1636,14 @@
         const el = new Audio();
         el.loop = true;
         el.preload = "auto";
-        let current = null; // arena name currently loaded
+        let current = null; // key of current track: arena name or MENU
+        let currentSrc = null; // resolved URL of the current track
         let fadeTimer = null;
+        const MENU = "\x00menu";
+        const MENU_FACTOR = 0.2; // menu theme sits far under gameplay (~3% at default)
         const muted = () => SFX.isMuted();
-        const target = () => (muted() ? 0 : vol);
+        const target = () =>
+          muted() ? 0 : current === MENU ? vol * MENU_FACTOR : vol;
         function fadeTo(to, done) {
           clearInterval(fadeTimer);
           const step = (to - el.volume) / 12 || to - el.volume; // ~0.4s
@@ -1658,9 +1662,10 @@
           const p = el.play();
           if (p && p.catch) p.catch(() => {}); // autoplay policy / missing file
         }
-        function playArena(name) {
-          const same = current === name;
-          current = name;
+        function switchTo(key, src) {
+          const same = current === key;
+          current = key;
+          currentSrc = src;
           if (muted()) {
             try {
               el.pause();
@@ -1671,14 +1676,21 @@
             fadeTo(target());
             return;
           }
-          el.src = fileFor(name);
+          el.src = src;
           el.volume = 0;
           start();
           fadeTo(target());
         }
+        function playArena(name) {
+          switchTo(name, fileFor(name));
+        }
+        function playMenu() {
+          switchTo(MENU, DIR + "menu_music.mp3");
+        }
         function stop() {
           if (el.paused && current == null) return;
           current = null;
+          currentSrc = null;
           fadeTo(0, () => {
             try {
               el.pause();
@@ -1693,9 +1705,18 @@
                 el.pause();
               } catch (e) {}
             });
-          } else if (current) {
-            if (!el.src) el.src = fileFor(current);
+          } else if (currentSrc) {
+            if (!el.src) el.src = currentSrc;
             el.volume = 0;
+            start();
+            fadeTo(target());
+          }
+        }
+        // First user gesture may be needed before the browser allows audio;
+        // re-attempt whatever should be playing (e.g. menu theme on load).
+        function resume() {
+          if (!muted() && currentSrc && el.paused) {
+            if (!el.src) el.src = currentSrc;
             start();
             fadeTo(target());
           }
@@ -1709,6 +1730,8 @@
         }
         return {
           playArena,
+          playMenu,
+          resume,
           stop,
           applyMute,
           setVolume,
@@ -1719,6 +1742,10 @@
       // Generic UI feedback: any button click, and hover on interactive elements.
       document.addEventListener("click", (e) => {
         if (e.target.closest(".btn, .segbtn")) SFX.play("click");
+      });
+      // Kick off audio on the first interaction (autoplay policies block it on load).
+      window.addEventListener("pointerdown", () => MUSIC.resume(), {
+        once: true,
       });
       let _hoverEl = null;
       document.addEventListener("pointerover", (e) => {
@@ -2347,7 +2374,7 @@
       /* ---- screens ---- */
       function openHome() {
         SFX.play("menuOpen");
-        MUSIC.stop(); // leaving the arena — fade out its theme
+        MUSIC.playMenu(); // menu theme (quiet); swaps to the arena track on play
         const done = Object.keys(PROG.beaten).length;
         $("over").innerHTML = `<div class="setup">
           <h1 style="font-size:30px" class="win">◆ SPARK: LANES</h1>
