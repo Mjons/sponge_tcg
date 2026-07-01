@@ -1473,6 +1473,13 @@
         <span class="turn" id="turn"></span>
         <span class="timer" id="timer"></span>
         <span class="record" id="record"></span>
+        <button
+          class="btn newbtn"
+          onclick="showOptions()"
+          title="Sound options"
+        >
+          ⚙
+        </button>
         <button class="btn newbtn" onclick="openHome()">Menu</button>
       </div>
 
@@ -1504,6 +1511,202 @@
         ANIMATING = false;
       const SP = () => (STATE && STATE.slotsPerLane) || 3;
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      /* ============ SOUND FX ============ */
+      const SFX = (() => {
+        // name -> [file, per-sound base volume]
+        const SPEC = {
+          // UI & navigation
+          click: ["/sfx/Button_click.mp3", 0.5],
+          hover: ["/sfx/Button_hover.mp3", 0.22],
+          menuOpen: ["/sfx/menu_open.mp3", 0.6],
+          menuClose: ["/sfx/Menu_close.mp3", 0.6],
+          levelSelect: ["/sfx/Level_select.mp3", 0.7],
+          levelLocked: ["/sfx/Level_locked.mp3", 0.6],
+          libraryOpen: ["/sfx/Library_open.mp3", 0.6],
+          viewToggle: ["/sfx/view_toggle.mp3", 0.5],
+          // card & hand
+          cardDraw: ["/sfx/card_draw.mp3", 0.55],
+          cardHover: ["/sfx/card_hover.mp3", 0.25],
+          cardModalOpen: ["/sfx/cord_modal_open.mp3", 0.55], // NOTE: file is misspelled "cord"
+          cardModalClose: ["/sfx/card_modal_close.mp3", 0.5],
+          cardPickUp: ["/sfx/card_pick_up.mp3", 0.5],
+          dropHighlight: ["/sfx/drop-target_highlight.mp3", 0.3],
+          cardStage: ["/sfx/card_stage_place.mp3", 0.6],
+          stageDeniedEnergy: ["/sfx/stage_denied_energy.mp3", 0.5],
+          stageDeniedLaneFull: ["/sfx/stage_denied_lane-full.mp3", 0.5],
+          resetTurn: ["/sfx/reset_turn.mp3", 0.55],
+          // turn & phase
+          turnStart: ["/sfx/turn_start.mp3", 0.6],
+          energyGain: ["/sfx/energy_gain.mp3", 0.45],
+          endTurn: ["/sfx/end_turn.mp3", 0.6],
+          revealFlip: ["/sfx/reveal_flip.mp3", 0.5],
+          opponentReveal: ["/sfx/opponent_reveal.mp3", 0.5],
+          // progression
+          xpGain: ["/sfx/xp_gain.mp3", 0.55],
+          cardLevelUp: ["/sfx/card_level_up.mp3", 0.6],
+          cardUnlock: ["/sfx/card_unlock.mp3", 0.7],
+          progressSaved: ["/sfx/progress_saved.mp3", 0.4],
+        };
+        let muted = false,
+          vol = 0.8; // master volume 0..1
+        try {
+          muted = localStorage.getItem("sparkMute") === "1";
+          const v = parseFloat(localStorage.getItem("sparkVol"));
+          if (!isNaN(v)) vol = Math.min(1, Math.max(0, v));
+        } catch (e) {}
+        const base = {};
+        for (const k in SPEC) {
+          const a = new Audio(SPEC[k][0]);
+          a.preload = "auto";
+          base[k] = a;
+        }
+        function play(name) {
+          if (muted || vol <= 0) return;
+          const src = base[name];
+          if (!src) return;
+          try {
+            // clone so overlapping/rapid triggers each get their own playback
+            const a = src.cloneNode();
+            a.volume = Math.min(1, SPEC[name][1] * vol);
+            const p = a.play();
+            if (p && p.catch) p.catch(() => {}); // ignore autoplay-policy rejects
+          } catch (e) {}
+        }
+        function setMuted(v) {
+          muted = !!v;
+          try {
+            localStorage.setItem("sparkMute", muted ? "1" : "0");
+          } catch (e) {}
+        }
+        function setVolume(v) {
+          vol = Math.min(1, Math.max(0, v));
+          try {
+            localStorage.setItem("sparkVol", String(vol));
+          } catch (e) {}
+        }
+        return {
+          play,
+          setMuted,
+          isMuted: () => muted,
+          toggleMute: () => {
+            setMuted(!muted);
+            return muted;
+          },
+          setVolume,
+          getVolume: () => vol,
+        };
+      })();
+
+      /* ============ ARENA MUSIC (looping background per level) ============ */
+      // Filename-driven: tries /music/<Level Name>.mp3. Drop a new mp3 named
+      // exactly after a level and it plays automatically — no code change.
+      // Shares SFX's mute state; has its own volume so it sits under the SFX.
+      const MUSIC = (() => {
+        const DIR = "/music/";
+        let vol = 0.4; // music volume 0..1 (under the SFX by default)
+        try {
+          const v = parseFloat(localStorage.getItem("sparkMusicVol"));
+          if (!isNaN(v)) vol = Math.min(1, Math.max(0, v));
+        } catch (e) {}
+        const el = new Audio();
+        el.loop = true;
+        el.preload = "auto";
+        let current = null; // arena name currently loaded
+        let fadeTimer = null;
+        const muted = () => SFX.isMuted();
+        const target = () => (muted() ? 0 : vol);
+        function fadeTo(to, done) {
+          clearInterval(fadeTimer);
+          const step = (to - el.volume) / 12 || to - el.volume; // ~0.4s
+          fadeTimer = setInterval(() => {
+            const nv = el.volume + step;
+            if ((step >= 0 && nv >= to) || (step < 0 && nv <= to)) {
+              el.volume = Math.max(0, Math.min(1, to));
+              clearInterval(fadeTimer);
+              if (done) done();
+            } else {
+              el.volume = Math.max(0, Math.min(1, nv));
+            }
+          }, 30);
+        }
+        function start() {
+          const p = el.play();
+          if (p && p.catch) p.catch(() => {}); // autoplay policy / missing file
+        }
+        function playArena(name) {
+          const same = current === name;
+          current = name;
+          if (muted()) {
+            try {
+              el.pause();
+            } catch (e) {}
+            return;
+          }
+          if (same && !el.paused && el.src) {
+            fadeTo(target());
+            return;
+          }
+          el.src = DIR + encodeURIComponent(name) + ".mp3";
+          el.volume = 0;
+          start();
+          fadeTo(target());
+        }
+        function stop() {
+          if (el.paused && current == null) return;
+          current = null;
+          fadeTo(0, () => {
+            try {
+              el.pause();
+              el.currentTime = 0;
+            } catch (e) {}
+          });
+        }
+        function applyMute() {
+          if (muted()) {
+            fadeTo(0, () => {
+              try {
+                el.pause();
+              } catch (e) {}
+            });
+          } else if (current) {
+            if (!el.src) el.src = DIR + encodeURIComponent(current) + ".mp3";
+            el.volume = 0;
+            start();
+            fadeTo(target());
+          }
+        }
+        function setVolume(v) {
+          vol = Math.min(1, Math.max(0, v));
+          try {
+            localStorage.setItem("sparkMusicVol", String(vol));
+          } catch (e) {}
+          if (!muted() && current) fadeTo(target());
+        }
+        return {
+          playArena,
+          stop,
+          applyMute,
+          setVolume,
+          getVolume: () => vol,
+        };
+      })();
+
+      // Generic UI feedback: any button click, and hover on interactive elements.
+      document.addEventListener("click", (e) => {
+        if (e.target.closest(".btn, .segbtn")) SFX.play("click");
+      });
+      let _hoverEl = null;
+      document.addEventListener("pointerover", (e) => {
+        const el = e.target.closest(
+          ".btn, .segbtn, .lvl:not(.locked), .libcard, .gcard, .hcard",
+        );
+        if (el === _hoverEl) return; // one blip per element entry, not per pixel
+        _hoverEl = el;
+        if (!el) return;
+        // hand cards get their own softer card-hover cue
+        SFX.play(el.classList.contains("hcard") ? "cardHover" : "hover");
+      });
 
       /* ---- per-round countdown: auto-reveal so a player can't stall forever ---- */
       const TURN_SECONDS = 30;
@@ -1688,10 +1891,13 @@
           );
         syncTimer();
       }
+      let _modalCloseSnd = "cardModalClose"; // which close cue closeCard() should use
       function openCard(i) {
         if (ANIMATING) return;
         const c = STATE.you.hand.find((x) => x.index === i);
         if (!c) return;
+        _modalCloseSnd = "cardModalClose";
+        SFX.play("cardModalOpen");
         const art = c.art
           ? `<div class="art" style="background-image:url('${c.art}')"></div><div class="veil"></div>`
           : `<div class="glyph">${glyph(c)}</div>`;
@@ -1708,6 +1914,7 @@
         $("cardModal").classList.remove("hidden");
       }
       function closeCard() {
+        SFX.play(_modalCloseSnd);
         $("cardModal").classList.add("hidden");
       }
       function playFromModal(i) {
@@ -1717,11 +1924,24 @@
         SEL = i;
         render();
       }
+      // Sound for a stage attempt: placed OK, or denied (no energy / lane full).
+      function stageSound(st) {
+        const err = st && st.error;
+        if (!err) {
+          SFX.play("cardStage");
+          return;
+        }
+        const e = err.toLowerCase();
+        if (e.includes("energy")) SFX.play("stageDeniedEnergy");
+        else if (e.includes("full") || e.includes("lane"))
+          SFX.play("stageDeniedLaneFull");
+      }
       async function placeCard(lane) {
         if (ANIMATING || SEL == null) return;
         const idx = SEL;
         SEL = null;
         STATE = await api("/api/stage", { index: idx, lane });
+        stageSound(STATE);
         render();
       }
 
@@ -1731,7 +1951,15 @@
         if (ANIMATING) return;
         const c = STATE.you.hand.find((x) => x.index === i);
         if (!c) return;
-        DRAG = { i, c, x: e.clientX, y: e.clientY, moved: false, ghost: null };
+        DRAG = {
+          i,
+          c,
+          x: e.clientX,
+          y: e.clientY,
+          moved: false,
+          ghost: null,
+          lastDrop: null,
+        };
         e.preventDefault();
         window.addEventListener("pointermove", onDragMove);
         window.addEventListener("pointerup", onDragEnd);
@@ -1760,6 +1988,7 @@
         if (!DRAG.moved && Math.hypot(dx, dy) < 8) return;
         if (!DRAG.moved) {
           DRAG.moved = true;
+          SFX.play("cardPickUp"); // card just lifted off the hand
           const g = document.createElement("div");
           g.className = "dragghost";
           if (DRAG.c.art) g.style.backgroundImage = `url('${DRAG.c.art}')`;
@@ -1774,6 +2003,10 @@
           .querySelectorAll(".slot.drophover")
           .forEach((s) => s.classList.remove("drophover"));
         const t = slotUnder(e.clientX, e.clientY);
+        if (t !== DRAG.lastDrop) {
+          DRAG.lastDrop = t;
+          if (t) SFX.play("dropHighlight"); // entered a new valid drop slot
+        }
         if (t) t.classList.add("drophover");
       }
       function onDragEnd(e) {
@@ -1804,10 +2037,12 @@
       }
       async function placeAt(index, lane) {
         STATE = await api("/api/stage", { index, lane });
+        stageSound(STATE);
         render();
       }
       async function resetTurn() {
         if (ANIMATING) return;
+        SFX.play("resetTurn");
         SEL = null;
         STATE = await api("/api/reset", {});
         render();
@@ -1827,8 +2062,15 @@
         }
       });
 
+      // New-round audio: turn chime → energy fills → card drawn (staggered).
+      function playTurnStartCues() {
+        SFX.play("turnStart");
+        setTimeout(() => SFX.play("energyGain"), 200);
+        setTimeout(() => SFX.play("cardDraw"), 420);
+      }
       async function endTurn() {
         if (ANIMATING) return;
+        SFX.play("endTurn"); // committed the round — reveal begins
         stopTimer(); // the round is ending — freeze the countdown
         SEL = null;
         ANIMATING = true;
@@ -1842,6 +2084,7 @@
         STATE = res;
         render();
         if (STATE.over) finishMatch();
+        else playTurnStartCues(); // a fresh round begins
       }
       function elFromHTML(html) {
         const d = document.createElement("div");
@@ -1924,8 +2167,10 @@
         for (const ev of events) {
           if (ev.kind === "reveal") {
             if (ev.owner === 1) {
+              SFX.play("opponentReveal");
               insertFoeCard(ev.lane, ev.card);
             } else {
+              SFX.play("revealFlip");
               const el = document.querySelector(`.slot[data-uid="${ev.uid}"]`);
               if (el) {
                 el.classList.remove("staged");
@@ -2077,15 +2322,71 @@
 
       /* ---- screens ---- */
       function openHome() {
+        SFX.play("menuOpen");
+        MUSIC.stop(); // leaving the arena — fade out its theme
         const done = Object.keys(PROG.beaten).length;
         $("over").innerHTML = `<div class="setup">
           <h1 style="font-size:30px" class="win">◆ SPARK: LANES</h1>
           <div class="hint">Beat levels to unlock cards, grind XP to level them up,
             and climb toward the Kraken. Progress ${done}/${LEVELS.length} levels.</div>
           <button class="btn primary" style="font-size:16px;padding:12px 22px" onclick="showCampaign()">▶ Campaign</button>
-          <button class="btn" style="font-size:15px;padding:10px 20px" onclick="showLibrary()">▤ Card Library</button>
+          <button class="btn" style="font-size:15px;padding:10px 20px" onclick="SFX.play('libraryOpen');showLibrary()">▤ Card Library</button>
+          <button class="btn" style="font-size:15px;padding:10px 20px" onclick="showOptions()">⚙ Options</button>
         </div>`;
         $("overlay").classList.remove("hidden");
+      }
+      /* ---- options (sound: volume + mute) ---- */
+      function showOptions() {
+        const vol = Math.round(SFX.getVolume() * 100);
+        const mvol = Math.round(MUSIC.getVolume() * 100);
+        const muted = SFX.isMuted();
+        $("over").innerHTML = `<div class="menu">
+          <div class="menuhead"><b>⚙ Options</b><button class="btn newbtn" onclick="closeOptions()">✕ Close</button></div>
+          <div style="display:flex;flex-direction:column;gap:20px;padding:20px 8px;max-width:440px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <span style="width:96px">🔊 Effects</span>
+              <input id="volSlider" type="range" min="0" max="100" value="${vol}" ${muted ? "disabled" : ""}
+                style="flex:1" oninput="onVolInput(this.value)" onchange="SFX.play('hover')">
+              <span id="volVal" style="width:46px;text-align:right">${vol}%</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px">
+              <span style="width:96px">🎵 Music</span>
+              <input id="musicSlider" type="range" min="0" max="100" value="${mvol}" ${muted ? "disabled" : ""}
+                style="flex:1" oninput="onMusicVolInput(this.value)">
+              <span id="musicVal" style="width:46px;text-align:right">${mvol}%</span>
+            </div>
+            <label style="display:flex;align-items:center;gap:14px;cursor:pointer">
+              <span style="width:96px">🔇 Mute</span>
+              <input type="checkbox" ${muted ? "checked" : ""} onchange="onMuteToggle(this.checked)">
+              <span style="color:var(--dim)">Silence all sound &amp; music</span>
+            </label>
+            <div class="hint">Sound settings are saved on this device.</div>
+          </div></div>`;
+        $("overlay").classList.remove("hidden");
+      }
+      function onVolInput(v) {
+        SFX.setVolume(v / 100);
+        const el = $("volVal");
+        if (el) el.textContent = Math.round(v) + "%";
+      }
+      function onMusicVolInput(v) {
+        MUSIC.setVolume(v / 100);
+        const el = $("musicVal");
+        if (el) el.textContent = Math.round(v) + "%";
+      }
+      function onMuteToggle(m) {
+        SFX.setMuted(m);
+        MUSIC.applyMute(); // mute/unmute the arena theme too
+        const s = $("volSlider"),
+          ms = $("musicSlider");
+        if (s) s.disabled = m;
+        if (ms) ms.disabled = m;
+        if (!m) SFX.play("click"); // confirm audibly when turning sound back on
+      }
+      function closeOptions() {
+        $("overlay").classList.add("hidden");
+        if (STATE && STATE.started && !STATE.over) render();
+        else openHome();
       }
       function showCampaign() {
         const rows = LEVELS.map((L) => {
@@ -2093,7 +2394,9 @@
           const beaten = PROG.beaten[L.id];
           const tag = locked ? "🔒" : beaten ? "✓" : "▶";
           const cls = locked ? "lvl locked" : "lvl" + (beaten ? " beaten" : "");
-          const click = locked ? "" : `onclick="startLevel(${L.id})"`;
+          const click = locked
+            ? `onclick="SFX.play('levelLocked')"`
+            : `onclick="startLevel(${L.id})"`;
           return `<div class="${cls}" ${click}>
             <span class="lvnum">${tag} ${L.id + 1}</span>
             <span class="lvname">${L.name}<small>${locked ? "Locked — beat level " + L.id : L.sub}</small></span>
@@ -2183,12 +2486,15 @@
       }
       function setLibView(v) {
         if (LIB_VIEW === v) return;
+        SFX.play("viewToggle");
         LIB_VIEW = v;
         showLibrary();
       }
       function openLibCard(id) {
         const c = byId(id);
         if (!c) return;
+        _modalCloseSnd = "menuClose"; // library popup is part of the menu flow
+        SFX.play("cardModalOpen");
         const p = PROG.cards[id];
         const owned = !!p;
         const lvl = owned ? p.lvl : 1;
@@ -2222,6 +2528,7 @@
       }
 
       async function startLevel(i) {
+        SFX.play("levelSelect");
         const deck = buildDeck();
         LAST = { level: i, deck };
         MATCH_RESOLVED = false;
@@ -2230,7 +2537,9 @@
         SEL = null;
         ANIMATING = false;
         $("overlay").classList.add("hidden");
+        MUSIC.playArena(STATE.levelName); // arena theme (started from a click)
         render();
+        playTurnStartCues(); // opening hand + first round begins
       }
 
       function finishMatch() {
@@ -2293,6 +2602,18 @@
           ${ups}${unl}
           <div class="cmbtns">${btns}</div>`;
         $("overlay").classList.remove("hidden");
+        // reward jingle: XP tally → level-ups → unlocks → saved confirmation
+        SFX.play("xpGain");
+        let dly = 550;
+        if (levelUps.length) {
+          setTimeout(() => SFX.play("cardLevelUp"), dly);
+          dly += 600;
+        }
+        if (unlocked.length) {
+          setTimeout(() => SFX.play("cardUnlock"), dly);
+          dly += 750;
+        }
+        setTimeout(() => SFX.play("progressSaved"), dly);
       }
 
       (async () => {

@@ -7,7 +7,9 @@
       "config": { "includeFiles": "spark/**" }
     },
     { "src": "spark/web/lanes.html", "use": "@vercel/static" },
-    { "src": "cards/**", "use": "@vercel/static" }
+    { "src": "cards/**", "use": "@vercel/static" },
+    { "src": "sfx/**", "use": "@vercel/static" },
+    { "src": "music/**", "use": "@vercel/static" }
   ],
   "routes": [
     {

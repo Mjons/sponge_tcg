@@ -60,6 +60,20 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, f.read(), ctype)
             else:
                 self._send(404, "no card", "text/plain")
+        elif path.startswith("/sfx/") or path.startswith("/music/"):
+            from urllib.parse import unquote
+            folder = "sfx" if path.startswith("/sfx/") else "music"
+            name = os.path.basename(unquote(path))   # decode %20 etc.; block traversal
+            fp = os.path.join(REPO_ROOT, folder, name)
+            if os.path.isfile(fp):
+                ext = os.path.splitext(name)[1].lower()
+                ctype = {".mp3": "audio/mpeg", ".ogg": "audio/ogg",
+                         ".wav": "audio/wav", ".m4a": "audio/mp4"}.get(
+                             ext, "application/octet-stream")
+                with open(fp, "rb") as f:
+                    self._send(200, f.read(), ctype)
+            else:
+                self._send(404, "no audio", "text/plain")
         else:
             self._send(404, "not found", "text/plain")
 
