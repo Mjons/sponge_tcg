@@ -1604,6 +1604,10 @@
       // Shares SFX's mute state; has its own volume so it sits under the SFX.
       const MUSIC = (() => {
         const DIR = "/music/";
+        // Level names may contain apostrophes (Kraken's Abyss) but the track
+        // files don't — strip them so "Kraken's Abyss" -> Krakens Abyss.mp3.
+        const fileFor = (n) =>
+          DIR + encodeURIComponent(n.replace(/['’]/g, "")) + ".mp3";
         let vol = 0.4; // music volume 0..1 (under the SFX by default)
         try {
           const v = parseFloat(localStorage.getItem("sparkMusicVol"));
@@ -1647,7 +1651,7 @@
             fadeTo(target());
             return;
           }
-          el.src = DIR + encodeURIComponent(name) + ".mp3";
+          el.src = fileFor(name);
           el.volume = 0;
           start();
           fadeTo(target());
@@ -1670,7 +1674,7 @@
               } catch (e) {}
             });
           } else if (current) {
-            if (!el.src) el.src = DIR + encodeURIComponent(current) + ".mp3";
+            if (!el.src) el.src = fileFor(current);
             el.volume = 0;
             start();
             fadeTo(target());
@@ -2529,6 +2533,9 @@
 
       async function startLevel(i) {
         SFX.play("levelSelect");
+        // Start the arena theme synchronously inside the click gesture (before
+        // the await) so the browser's autoplay policy doesn't block it.
+        if (LEVELS[i]) MUSIC.playArena(LEVELS[i].name);
         const deck = buildDeck();
         LAST = { level: i, deck };
         MATCH_RESOLVED = false;
@@ -2537,7 +2544,6 @@
         SEL = null;
         ANIMATING = false;
         $("overlay").classList.add("hidden");
-        MUSIC.playArena(STATE.levelName); // arena theme (started from a click)
         render();
         playTurnStartCues(); // opening hand + first round begins
       }
