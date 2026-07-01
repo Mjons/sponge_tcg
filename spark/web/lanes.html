@@ -97,6 +97,18 @@
         color: var(--dim);
         font-size: 12px;
       }
+      .timer {
+        font-weight: 800;
+        font-size: 13px;
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+        min-width: 40px;
+        letter-spacing: 0.3px;
+      }
+      .timer.low {
+        color: var(--bad);
+        animation: pulse 1s infinite;
+      }
       .record {
         display: flex;
         gap: 6px;
@@ -1459,6 +1471,7 @@
       <div class="topbar">
         <span class="brand">◆ LANES</span>
         <span class="turn" id="turn"></span>
+        <span class="timer" id="timer"></span>
         <span class="record" id="record"></span>
         <button class="btn newbtn" onclick="openHome()">Menu</button>
       </div>
@@ -1491,6 +1504,66 @@
         ANIMATING = false;
       const SP = () => (STATE && STATE.slotsPerLane) || 3;
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      /* ---- per-round countdown: auto-reveal so a player can't stall forever ---- */
+      const TURN_SECONDS = 30;
+      let timeLeft = TURN_SECONDS,
+        timerTurn = null, // which STATE.turn the countdown is running for
+        timerInterval = null;
+      function stopTimer() {
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+      }
+      function resetTimer() {
+        stopTimer();
+        timerTurn = null;
+        renderTimer();
+      }
+      function timerPaused() {
+        // hold the clock while the player isn't actually in control of the board
+        return (
+          ANIMATING ||
+          !STATE ||
+          STATE.over ||
+          !$("overlay").classList.contains("hidden") ||
+          !$("cardModal").classList.contains("hidden")
+        );
+      }
+      function renderTimer() {
+        const el = $("timer");
+        if (!el) return;
+        if (!STATE || !STATE.started || STATE.over || timerTurn == null) {
+          el.textContent = "";
+          el.className = "timer";
+          return;
+        }
+        el.textContent = "⏱ " + Math.max(0, timeLeft) + "s";
+        el.className = "timer" + (timeLeft <= 5 ? " low" : "");
+      }
+      function tick() {
+        if (timerPaused()) return; // don't burn the clock during reveals/menus
+        timeLeft -= 1;
+        renderTimer();
+        if (timeLeft <= 0) {
+          stopTimer();
+          endTurn(); // time's up — reveal whatever is staged
+        }
+      }
+      function syncTimer() {
+        // called from render(): (re)start the clock on each fresh actionable turn
+        if (!STATE || !STATE.started || STATE.over) {
+          resetTimer();
+          return;
+        }
+        if (timerTurn !== STATE.turn) {
+          timerTurn = STATE.turn;
+          timeLeft = TURN_SECONDS;
+        }
+        if (!timerInterval) timerInterval = setInterval(tick, 1000);
+        renderTimer();
+      }
       // On stateless hosts (Vercel) the server keeps no game in memory: it
       // returns the whole game as an opaque `_game` token that we stash and
       // send back on every mutating request. On the local stateful server
@@ -1613,6 +1686,7 @@
           .forEach(
             (el) => (el.onclick = () => placeCard(parseInt(el.dataset.lane))),
           );
+        syncTimer();
       }
       function openCard(i) {
         if (ANIMATING) return;
@@ -1755,6 +1829,7 @@
 
       async function endTurn() {
         if (ANIMATING) return;
+        stopTimer(); // the round is ending — freeze the countdown
         SEL = null;
         ANIMATING = true;
         $("endBtn").disabled = true;
@@ -2150,6 +2225,7 @@
         const deck = buildDeck();
         LAST = { level: i, deck };
         MATCH_RESOLVED = false;
+        resetTimer(); // fresh match — clear any stale countdown state
         STATE = await api("/api/new", { level: i, deck });
         SEL = null;
         ANIMATING = false;
