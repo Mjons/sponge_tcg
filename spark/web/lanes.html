@@ -935,7 +935,9 @@
       }
       .libgrid {
         flex: 1;
+        min-height: 0; /* allow flex child to shrink so overflow-y scrolling engages */
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
         display: grid;
         grid-template-columns: 1fr 1fr; /* 2 per row */
         gap: 14px;
@@ -2218,14 +2220,31 @@
       }
 
       (async () => {
-        [LEVELS, POOL] = await Promise.all([
-          api("/api/levels"),
-          api("/api/pool"),
-        ]);
-        loadProg();
-        STATE = await api("/api/state");
-        if (STATE.started && !STATE.over) render();
-        else openHome();
+        try {
+          [LEVELS, POOL] = await Promise.all([
+            api("/api/levels"),
+            api("/api/pool"),
+          ]);
+          if (!Array.isArray(LEVELS) || !Array.isArray(POOL)) {
+            throw new Error(
+              "API returned unexpected data (levels/pool not arrays).",
+            );
+          }
+          loadProg();
+          STATE = await api("/api/state");
+          if (STATE.started && !STATE.over) render();
+          else openHome();
+        } catch (e) {
+          // Don't leave a black screen — surface the failure so it's debuggable.
+          $("over").innerHTML = `<div class="setup">
+            <h1 style="font-size:22px" class="bad">⚠ Failed to start</h1>
+            <div class="hint">The game server API didn't respond correctly.<br>
+              <code style="color:#ff9">${String(e && e.message ? e.message : e)}</code><br>
+              Check the browser console (F12) and the /api/ endpoints.</div>
+            <button class="btn primary" onclick="location.reload()">Retry</button>
+          </div>`;
+          $("overlay").classList.remove("hidden");
+        }
       })();
     </script>
   </body>
