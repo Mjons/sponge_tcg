@@ -952,8 +952,10 @@
         -webkit-overflow-scrolling: touch;
         display: grid;
         grid-template-columns: 1fr 1fr; /* 2 per row */
+        grid-auto-rows: max-content; /* rows hug card height (don't divide the viewport) */
         gap: 14px;
         align-content: start;
+        align-items: start; /* don't stretch cards to row height — preserves their 2:3 aspect-ratio */
         padding: 6px 4px 18px;
         perspective: 1000px;
       }
@@ -1212,13 +1214,31 @@
         background: #2a2418;
         box-shadow: 0 0 10px #f4b74033;
       }
-      /* FULL view: detail panel always shown, no hover needed — just scroll */
-      .libgrid.full .libcard .namebar {
+      /* FULL view: the entire collection as an art wall — every card fits in ONE screen,
+         no scrolling. Column count is computed in JS (fitFullView) to fill the viewport. */
+      .libgrid.full {
+        overflow: hidden;
+        gap: 6px;
+        padding: 4px 2px 6px;
+      }
+      .libgrid.full .libcard {
+        border-radius: 8px;
+        border-width: 1.5px;
+        box-shadow: 0 2px 6px #0007;
+        animation-delay: calc(var(--i, 0) * 11ms);
+      }
+      /* at this size only the art reads — strip the overlays; tap a card for full details */
+      .libgrid.full .libcard .namebar,
+      .libgrid.full .libcard .cost,
+      .libgrid.full .libcard .lvbadge,
+      .libgrid.full .libcard .reveal,
+      .libgrid.full .libcard .xpbar,
+      .libgrid.full .libcard .xpmax,
+      .libgrid.full .libcard .lockveil .unlocklbl {
         display: none;
       }
-      .libgrid.full .libcard.filled .reveal {
-        transform: none;
-        opacity: 1;
+      .libgrid.full .libcard .lockveil .lk {
+        font-size: 18px;
       }
       /* GRID view: clean full-art thumbnail + caption BELOW — nothing overlaps the art */
       .gcard {
@@ -1608,7 +1628,7 @@
         // files don't — strip them so "Kraken's Abyss" -> Krakens Abyss.mp3.
         const fileFor = (n) =>
           DIR + encodeURIComponent(n.replace(/['’]/g, "")) + ".mp3";
-        let vol = 0.4; // music volume 0..1 (under the SFX by default)
+        let vol = 0.15; // music volume 0..1 (sits well under the SFX by default)
         try {
           const v = parseFloat(localStorage.getItem("sparkMusicVol"));
           if (!isNaN(v)) vol = Math.min(1, Math.max(0, v));
