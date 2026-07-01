@@ -103,14 +103,21 @@ two ways:
 To deploy:
 
 1. Push this repo to GitHub.
-2. On [vercel.com](https://vercel.com), **Add New → Project** and import the repo
-   (Framework Preset: **Other** — no build step needed).
-3. Deploy. `vercel.json` rewrites `/` to the game and bundles the `spark`
-   package into each function. Every `git push` re-deploys automatically.
+2. On [vercel.com](https://vercel.com), **Add New → Project** and import the repo.
+3. Deploy. Every `git push` to `main` re-deploys automatically.
 
-Card art in `cards/` is served statically from the CDN; the Python functions
-handle `/api/new`, `/api/stage`, `/api/reset`, `/api/end`, `/api/state`,
-`/api/levels`, and `/api/pool`.
+`vercel.json` uses an explicit `builds`/`routes` config (zero-config detection
+served the `.py` files as static text instead of building them):
+
+- `api/*.py` are built with `@vercel/python`; each defines a top-level
+  `class handler(BaseHTTPRequestHandler)` and imports `spark` lazily at runtime.
+  `includeFiles: "spark/**"` bundles the engine into every function.
+- `spark/web/lanes.html` and `cards/**` are served as static assets.
+- Routes map `/` → the game, `/api/<name>` → the matching `.py` function, and a
+  `filesystem` handler serves the static files.
+
+The Python functions handle `/api/new`, `/api/stage`, `/api/reset`, `/api/end`,
+`/api/state`, `/api/levels`, and `/api/pool`.
 
 ### Playing against the bot
 
