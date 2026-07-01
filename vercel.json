@@ -1,4 +1,20 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [{ "source": "/", "destination": "/spark/web/lanes.html" }]
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/*.py",
+      "use": "@vercel/python",
+      "config": { "includeFiles": "spark/**" }
+    },
+    { "src": "spark/web/lanes.html", "use": "@vercel/static" },
+    { "src": "cards/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    {
+      "src": "/api/(levels|pool|state|new|stage|reset|end)/?",
+      "dest": "/api/$1.py"
+    },
+    { "src": "/", "dest": "/spark/web/lanes.html" },
+    { "handle": "filesystem" }
+  ]
 }
