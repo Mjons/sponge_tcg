@@ -1628,10 +1628,13 @@
         // files don't — strip them so "Kraken's Abyss" -> Krakens Abyss.mp3.
         const fileFor = (n) =>
           DIR + encodeURIComponent(n.replace(/['’]/g, "")) + ".mp3";
-        let vol = 0.15; // music volume 0..1 (sits well under the SFX by default)
+        let vol = 0.15; // arena music volume 0..1 (sits under the SFX by default)
+        let menuVol = 0.03; // menu theme volume 0..1 (quiet by default)
         try {
           const v = parseFloat(localStorage.getItem("sparkMusicVol"));
           if (!isNaN(v)) vol = Math.min(1, Math.max(0, v));
+          const mv = parseFloat(localStorage.getItem("sparkMenuVol"));
+          if (!isNaN(mv)) menuVol = Math.min(1, Math.max(0, mv));
         } catch (e) {}
         const el = new Audio();
         el.loop = true;
@@ -1640,10 +1643,8 @@
         let currentSrc = null; // resolved URL of the current track
         let fadeTimer = null;
         const MENU = "\x00menu";
-        const MENU_FACTOR = 0.2; // menu theme sits far under gameplay (~3% at default)
         const muted = () => SFX.isMuted();
-        const target = () =>
-          muted() ? 0 : current === MENU ? vol * MENU_FACTOR : vol;
+        const target = () => (muted() ? 0 : current === MENU ? menuVol : vol);
         function fadeTo(to, done) {
           clearInterval(fadeTimer);
           const step = (to - el.volume) / 12 || to - el.volume; // ~0.4s
@@ -1726,7 +1727,14 @@
           try {
             localStorage.setItem("sparkMusicVol", String(vol));
           } catch (e) {}
-          if (!muted() && current) fadeTo(target());
+          if (!muted() && current && current !== MENU) fadeTo(target());
+        }
+        function setMenuVolume(v) {
+          menuVol = Math.min(1, Math.max(0, v));
+          try {
+            localStorage.setItem("sparkMenuVol", String(menuVol));
+          } catch (e) {}
+          if (!muted() && current === MENU) fadeTo(target());
         }
         return {
           playArena,
@@ -1736,6 +1744,8 @@
           applyMute,
           setVolume,
           getVolume: () => vol,
+          setMenuVolume,
+          getMenuVolume: () => menuVol,
         };
       })();
 
@@ -2390,24 +2400,31 @@
       function showOptions() {
         const vol = Math.round(SFX.getVolume() * 100);
         const mvol = Math.round(MUSIC.getVolume() * 100);
+        const menuvol = Math.round(MUSIC.getMenuVolume() * 100);
         const muted = SFX.isMuted();
         $("over").innerHTML = `<div class="menu">
           <div class="menuhead"><b>⚙ Options</b><button class="btn newbtn" onclick="closeOptions()">✕ Close</button></div>
           <div style="display:flex;flex-direction:column;gap:20px;padding:20px 8px;max-width:440px">
             <div style="display:flex;align-items:center;gap:14px">
-              <span style="width:96px">🔊 Effects</span>
+              <span style="width:110px">🔊 Effects</span>
               <input id="volSlider" type="range" min="0" max="100" value="${vol}" ${muted ? "disabled" : ""}
                 style="flex:1" oninput="onVolInput(this.value)" onchange="SFX.play('hover')">
               <span id="volVal" style="width:46px;text-align:right">${vol}%</span>
             </div>
             <div style="display:flex;align-items:center;gap:14px">
-              <span style="width:96px">🎵 Music</span>
+              <span style="width:110px">🎵 Arena music</span>
               <input id="musicSlider" type="range" min="0" max="100" value="${mvol}" ${muted ? "disabled" : ""}
                 style="flex:1" oninput="onMusicVolInput(this.value)">
               <span id="musicVal" style="width:46px;text-align:right">${mvol}%</span>
             </div>
+            <div style="display:flex;align-items:center;gap:14px">
+              <span style="width:110px">🎶 Menu music</span>
+              <input id="menuMusicSlider" type="range" min="0" max="100" value="${menuvol}" ${muted ? "disabled" : ""}
+                style="flex:1" oninput="onMenuMusicVolInput(this.value)">
+              <span id="menuMusicVal" style="width:46px;text-align:right">${menuvol}%</span>
+            </div>
             <label style="display:flex;align-items:center;gap:14px;cursor:pointer">
-              <span style="width:96px">🔇 Mute</span>
+              <span style="width:110px">🔇 Mute</span>
               <input type="checkbox" ${muted ? "checked" : ""} onchange="onMuteToggle(this.checked)">
               <span style="color:var(--dim)">Silence all sound &amp; music</span>
             </label>
@@ -2425,13 +2442,20 @@
         const el = $("musicVal");
         if (el) el.textContent = Math.round(v) + "%";
       }
+      function onMenuMusicVolInput(v) {
+        MUSIC.setMenuVolume(v / 100);
+        const el = $("menuMusicVal");
+        if (el) el.textContent = Math.round(v) + "%";
+      }
       function onMuteToggle(m) {
         SFX.setMuted(m);
-        MUSIC.applyMute(); // mute/unmute the arena theme too
+        MUSIC.applyMute(); // mute/unmute the music too
         const s = $("volSlider"),
-          ms = $("musicSlider");
+          ms = $("musicSlider"),
+          mms = $("menuMusicSlider");
         if (s) s.disabled = m;
         if (ms) ms.disabled = m;
+        if (mms) mms.disabled = m;
         if (!m) SFX.play("click"); // confirm audibly when turning sound back on
       }
       function closeOptions() {
