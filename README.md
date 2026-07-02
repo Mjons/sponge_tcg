@@ -66,7 +66,10 @@ Snap-like). Files: `spark/lanes.py` (engine + card set with perks + bot),
   (0→3, combat-aware at the top), opponent deck bias (random→legendary), and
   boss handicaps (+energy / +cards). A **Card Library** tracks every card's
   owned/locked state; you start with commons+rares and **unlock epics/legendaries
-  by clearing levels**. Every card earns **XP** each match (more on a win) and
+  by clearing levels**. The Library doubles as a **deck builder**: tap ＋/✓ on
+  an owned card (or use its popup) to hand-pick your 16 — ✨ Auto-fill restores
+  the strongest-16 auto pick, and a half-finished deck never enters a match
+  (auto plays until yours is complete). The deck is saved with your progress. Every card earns **XP** each match (more on a win) and
   **levels up** (+1 Power/level, +1 Attack/2 levels, cap L5) — grinding earlier
   levels powers up your deck to clear later ones. Progress is saved in the
   browser (`localStorage`); the server applies each card's level to its stats.

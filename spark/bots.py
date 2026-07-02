@@ -165,32 +165,32 @@ def make_policy(archetype):
                                        else [u for u in opp.board if u.damaged])
                 if tgt is None:
                     return -1
-                s = 8 + tgt.value()
+                s += 8 + tgt.value()
                 if tgt.value() < 5 and card.cost >= 3:  # don't waste hard removal
                     s -= 6
             elif t == "aoe":
                 killed = [u for u in opp.board if not u.barrier and u.health <= e["amount"]]
                 if len(opp.board) < 2:
                     return -1
-                s = 4 + 3 * len(killed) + len(opp.board)
+                s += 4 + 3 * len(killed) + len(opp.board)
             elif t == "damage_flexible":
                 if aggressive:
-                    s = 6 + e["amount"]
+                    s += 6 + e["amount"]
                 else:
                     tgt = _best_enemy_unit(opp.board)
-                    s = 5 + (tgt.value() if tgt else e["amount"])
+                    s += 5 + (tgt.value() if tgt else e["amount"])
             elif t == "draw":
-                s = (7 if len(me.hand) <= 2 else 3) + (1 if archetype == "control" else 0)
+                s += (7 if len(me.hand) <= 2 else 3) + (1 if archetype == "control" else 0)
             elif t == "heal_face":
-                s = 8 if me.life <= 10 else (2 if me.life <= 15 else -1)
+                s += 8 if me.life <= 10 else (2 if me.life <= 15 else -1)
             elif t in ("buff", "buff_all"):
                 ready = [u for u in me.board if u.ready and u.atk > 0]
-                s = 4 + (2 if ready else -5)
+                s += 4 + (2 if ready else -5)
             elif t == "bounce":
-                s = 5 if opp.board else -1
+                s += 5 if opp.board else -1
             elif t == "silence":
                 tgt = _best_enemy_unit(opp.board)
-                s = (3 + tgt.value()) if tgt and (tgt.keywords or tgt.barrier) else -1
+                s += (3 + tgt.value()) if tgt and (tgt.keywords or tgt.barrier) else -1
         return s
 
     def play_phase(game, me):
