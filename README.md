@@ -55,9 +55,12 @@ Snap-like). Files: `spark/lanes.py` (engine + card set with perks + bot),
 - **Perks that affect other cards** — On Reveal (✦) and Ongoing (∞): buff your
   cards in a lane / the _other_ lanes, debuff (and now potentially **kill**)
   enemies in a lane, scale with allies, or draw.
-- **Budget = 2·Cost + 1 split into Attack + Power**, minus perk cost (same spine
-  as the combat game). Attack/Power splits and perk costs are hand-tuned —
-  _flagged for playtesting_ (combat makes boards churn fast).
+- **Budget = 2·Cost + 1 split into Attack + Power**, minus the perk's price
+  (same spine as the combat game). Perk prices come from a small table in
+  `lanes.py` (`_perk_cost`) and the pool is **budget-checked on every build**,
+  just like the combat pool — seven quietly over-budget cards were brought
+  back in line when the check landed. Attack/Power splits remain _flagged for
+  playtesting_ (combat makes boards churn fast).
 - **Campaign + collection (RPG grind):** a home menu with **10 levels** that
   unlock in order (beat one → unlock the next). Difficulty scales via bot skill
   (0→3, combat-aware at the top), opponent deck bias (random→legendary), and
@@ -172,14 +175,22 @@ low-budget formula edge that emitted **0-attack "dead" Rush units at cost 1**
 aggro and forced the life re-tune from 18 → 21 — a clean example of the
 card-power / life-total interplay).
 
-### Final balance (27,000 games, seat-alternated)
+A third bug was found in a later audit: the bot's spell scorer valued
+multi-effect spells by their **last** effect only (so "destroy + draw" was
+priced as a mediocre draw spell), making control underplay its premium
+removal. Fixing it buffed control and shifted every measured number below.
+A re-sweep of `start_life` 19→22 kept **21** as the right setting: it is the
+only value where the aggro/control head-to-head is dead even (at 20, aggro
+wins that matchup 55/45).
+
+### Final balance (27,000 games, seat-alternated, corrected bot)
 
 ```
-Archetype win-rate (all matchups, both seats):  aggro 51.0%  midrange 47.4%  control 51.6%
-Rock-paper-scissors:  aggro > midrange,  control > midrange,  aggro > control
-First-player win-rate:  50.8%   (target ~51%)
+Archetype win-rate (all matchups, both seats):  aggro 50.4%  midrange 46.7%  control 53.0%
+Matchups:  aggro vs control dead even (49.9/49.3);  both beat midrange (control 60/42)
+First-player win-rate:  50.9%   (target ~51%)
 Failure mode A (aggro too fast, <=6 plies):  0.0%
-Failure mode B (never ends):  0 draws / 0 timeouts in 4000 games; longest 55 plies (fatigue always closes)
+Failure mode B (never ends):  0 draws / 0 timeouts in 27,000 games; longest 57 plies (fatigue always closes)
 ```
 
 ## Mitigation knobs (tunable, in `engine.Game`)
@@ -192,5 +203,6 @@ Failure mode B (never ends):  0 draws / 0 timeouts in 4000 games; longest 55 pli
 - Spell tempo costs (removal/burn/draw) are hand-tuned, not formula-derived.
 - The bot values Guard/Rush/Barrier with fixed weights; a human meta could
   push these. Keyword point-costs are the most likely thing to re-tune.
-- Midrange sits ~2.5% under 50 — acceptable (classic "fair-deck" underdog),
-  but worth watching if the pool grows.
+- Midrange sits ~3.3% under 50 — the classic "fair-deck" underdog, and the
+  first thing to revisit if the pool grows. Control's 53.0% overall comes
+  entirely from farming midrange (60/42); its aggro matchup is even.

@@ -53,7 +53,7 @@ def run(games_per_pairing=1500, seed=1234):
                 # archetype; we record a's result regardless of seat.
                 swap = (g % 2 == 1)
                 p0, p1 = (b, a) if swap else (a, b)
-                seed_g = rng.randrange(1 << 30)
+                seed_g = rng.getrandbits(64)
                 winner, turns = play_match(pool, p0, p1, seed_g)
                 total_games += 1
                 turn_hist[turns] += 1
@@ -102,8 +102,9 @@ def report(res):
     out.append(f"{res['total_games']} games total "
                f"({gpp} per archetype pairing, seat-alternated)\n")
 
-    # Archetype matrix: cell = row-archetype win% as player-0 vs column
-    out.append("Archetype win-rate matrix  (row = P0, cell = P0 win%):")
+    # Archetype matrix: cell = row archetype's win% vs the column archetype,
+    # aggregated over both seats (games are seat-alternated within a pairing).
+    out.append("Archetype win-rate matrix  (cell = row win% vs column, both seats):")
     header = "            " + "".join(f"{c[:5]:>9}" for c in ARCHETYPES)
     out.append(header)
     for a in ARCHETYPES:

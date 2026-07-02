@@ -1192,6 +1192,66 @@
         margin: 2px 2px 12px;
         flex: 0 0 auto;
       }
+      /* ---- deck builder (library doubles as deck editor) ---- */
+      .deckbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 2px 10px;
+        flex: 0 0 auto;
+      }
+      .deckcount {
+        font-weight: 800;
+        font-size: 13px;
+        color: var(--dim);
+        white-space: nowrap;
+      }
+      .deckcount.ok {
+        color: var(--amber);
+      }
+      .deckhint {
+        flex: 1;
+        color: var(--dim);
+        font-size: 11px;
+        line-height: 1.25;
+      }
+      .deckhint.warn {
+        color: var(--bad);
+      }
+      .deckbtn {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        z-index: 3;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+        background: #0e1116cc;
+        color: var(--ink);
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .deckbtn.in {
+        background: var(--amber);
+        border-color: var(--amber);
+        color: #201a08;
+      }
+      .gcard.indeck {
+        border-color: var(--amber);
+        box-shadow:
+          0 0 0 1px var(--amber),
+          0 4px 12px #0008;
+      }
+      .libcard.indeck {
+        outline: 2px solid var(--amber);
+        outline-offset: -2px;
+      }
       .segbtn {
         flex: 1;
         padding: 9px 10px;
@@ -1833,18 +1893,33 @@
       // send back on every mutating request. On the local stateful server
       // `_game` is simply absent, so GAME stays null and nothing is attached.
       let GAME = null;
+      // Never throws: network failures and non-JSON responses come back as
+      // { error } so callers can keep the current board instead of dying
+      // mid-await (which used to leave ANIMATING stuck on).
       async function api(path, body) {
         if (body && GAME && path !== "/api/new") {
           body = { ...body, game: GAME };
         }
-        const r = await fetch(path, {
-          method: body ? "POST" : "GET",
-          headers: { "Content-Type": "application/json" },
-          body: body ? JSON.stringify(body) : undefined,
-        });
-        const res = await r.json();
-        if (res && res._game) GAME = res._game;
-        return res;
+        try {
+          const r = await fetch(path, {
+            method: body ? "POST" : "GET",
+            headers: { "Content-Type": "application/json" },
+            body: body ? JSON.stringify(body) : undefined,
+          });
+          let res;
+          try {
+            res = await r.json();
+          } catch {
+            return { error: `Server error (HTTP ${r.status}).` };
+          }
+          if (res && res._game) GAME = res._game;
+          return res;
+        } catch {
+          return {
+            error:
+              "Can't reach the game server — check your connection and try again.",
+          };
+        }
       }
       function glyph(c) {
         const t = c.text || "";
@@ -1903,7 +1978,7 @@
       function render() {
         const s = STATE;
         if (!s || !s.started) {
-          openSetup();
+          openHome();
           return;
         }
         $("turn").textContent =
@@ -2001,9 +2076,8 @@
         if (ANIMATING || SEL == null) return;
         const idx = SEL;
         SEL = null;
-        STATE = await api("/api/stage", { index: idx, lane });
-        stageSound(STATE);
-        render();
+        const res = await api("/api/stage", { index: idx, lane });
+        if (adoptState(res)) stageSound(STATE);
       }
 
       /* ---- drag & drop (mouse / touch / pen via Pointer Events) ---- */
@@ -2097,21 +2171,37 @@
         render(); // dropped nowhere valid — just clear highlights
       }
       async function placeAt(index, lane) {
-        STATE = await api("/api/stage", { index, lane });
-        stageSound(STATE);
-        render();
+        if (ANIMATING) {
+          render(); // drop landed mid-reveal — clear drag highlights, ignore
+          return;
+        }
+        const res = await api("/api/stage", { index, lane });
+        if (adoptState(res)) stageSound(STATE);
       }
       async function resetTurn() {
         if (ANIMATING) return;
         SFX.play("resetTurn");
         SEL = null;
-        STATE = await api("/api/reset", {});
-        render();
+        adoptState(await api("/api/reset", {}));
       }
       function flash(m) {
         const mb = $("msg");
         mb.className = "msgbar err";
         mb.textContent = m;
+      }
+      // Adopt a server response as the new STATE only if it is a real game
+      // state (they always carry `started`). Error-only payloads — network
+      // failure, lost token on the stateless host — keep the current board
+      // and surface the message instead. Returns true if adopted.
+      function adoptState(res) {
+        if (res && res.started !== undefined) {
+          STATE = res;
+          render();
+          return true;
+        }
+        render();
+        flash((res && res.error) || "Something went wrong — try again.");
+        return false;
       }
       document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape" || ANIMATING) return;
@@ -2139,11 +2229,26 @@
         $("resetBtn").disabled = true;
         $("msg").className = "msgbar";
         $("msg").textContent = "Revealing…";
-        const res = await api("/api/end", {});
-        if (res.events && res.events.length) await playReveal(res.events);
-        ANIMATING = false;
-        STATE = res;
-        render();
+        let ok = false,
+          errMsg = null;
+        try {
+          const res = await api("/api/end", {});
+          if (res && res.started !== undefined) {
+            if (res.events && res.events.length) await playReveal(res.events);
+            STATE = res;
+            ok = true;
+          } else {
+            errMsg = (res && res.error) || "Something went wrong — try again.";
+            timerTurn = null; // give the round a fresh clock for the retry
+          }
+        } finally {
+          // Whatever happened above, never leave the board locked: ANIMATING
+          // stuck on true means dead buttons and a frozen timer until reload.
+          ANIMATING = false;
+          render();
+          if (errMsg) flash(errMsg);
+        }
+        if (!ok) return;
         if (STATE.over) finishMatch();
         else playTurnStartCues(); // a fresh round begins
       }
@@ -2303,7 +2408,8 @@
       let LIB_VIEW = "compact"; // "compact" (art-focused, hover-reveal) | "full" (all details shown)
       const CURVE = { 1: 1, 2: 4, 3: 4, 4: 3, 5: 2, 6: 2 };
       const LVL_CAP = 5;
-      const PROG_VER = 2; // bump to reset saves when the pool/ids change
+      const DECK_SIZE = 16;
+      const PROG_VER = 2; // bump when the save schema changes (old saves are migrated, not wiped)
       const byId = (id) => POOL.find((c) => c.id === id);
       const strength = (c) =>
         c.attack + c.power + 2 * RARW[c.rarity] + (c.text ? 2 : 0);
@@ -2333,26 +2439,71 @@
         const per = Math.ceil(lk.length / Math.max(1, LEVELS.length));
         return lk.slice(i * per, (i + 1) * per);
       }
+      function defaultProg() {
+        // deck: null = "auto-pick my strongest 16"; an id array = hand-built
+        const p = {
+          ver: PROG_VER,
+          unlocked: 0,
+          beaten: {},
+          cards: {},
+          deck: null,
+        };
+        starterSet().forEach((id) => (p.cards[id] = { xp: 0, lvl: 1 }));
+        return p;
+      }
+      // Salvage an older or partially-broken save instead of wiping it:
+      // campaign position carries over (clamped to the level list) and card
+      // XP/levels carry over for every id still in the pool. Unknown ids are
+      // dropped; missing starters are re-granted.
+      function migrateProg(old) {
+        const p = defaultProg();
+        if (!old || typeof old !== "object") return p;
+        if (Number.isInteger(old.unlocked))
+          p.unlocked = Math.max(0, Math.min(old.unlocked, LEVELS.length - 1));
+        if (old.beaten && typeof old.beaten === "object")
+          for (const k of Object.keys(old.beaten))
+            if (LEVELS[k]) p.beaten[k] = true;
+        if (old.cards && typeof old.cards === "object")
+          for (const [id, c] of Object.entries(old.cards)) {
+            if (!c || !byId(parseInt(id))) continue;
+            p.cards[id] = {
+              xp: Math.max(0, parseInt(c.xp) || 0),
+              lvl: Math.max(1, Math.min(parseInt(c.lvl) || 1, LVL_CAP)),
+            };
+          }
+        if (Array.isArray(old.deck))
+          p.deck = [...new Set(old.deck.map((x) => parseInt(x)))]
+            .filter((id) => p.cards[id])
+            .slice(0, DECK_SIZE);
+        return p;
+      }
       function loadProg() {
+        let raw = null;
         try {
-          PROG = JSON.parse(localStorage.getItem("sparkLanes"));
+          raw = JSON.parse(localStorage.getItem("sparkLanes"));
         } catch (e) {
-          PROG = null;
+          raw = null;
         }
-        if (!PROG || PROG.ver !== PROG_VER || !PROG.cards) {
-          PROG = { ver: PROG_VER, unlocked: 0, beaten: {}, cards: {} };
-          starterSet().forEach((id) => (PROG.cards[id] = { xp: 0, lvl: 1 }));
+        if (raw && raw.ver === PROG_VER && raw.cards) {
+          PROG = raw;
+        } else {
+          PROG = migrateProg(raw);
           saveProg();
         }
       }
       function saveProg() {
-        localStorage.setItem("sparkLanes", JSON.stringify(PROG));
+        try {
+          localStorage.setItem("sparkLanes", JSON.stringify(PROG));
+        } catch (e) {
+          // Private mode / quota-full: keep playing, progress just won't
+          // survive the tab. Never let persistence kill the boot sequence.
+        }
       }
       function owned() {
         return Object.keys(PROG.cards).map((id) => parseInt(id));
       }
 
-      function buildDeck() {
+      function autoDeckIds() {
         // best 16 owned cards by leveled strength, following the curve
         const own = owned()
           .map((id) => ({ c: byId(id), p: PROG.cards[id] }))
@@ -2370,15 +2521,61 @@
             used.add(bucket[k].c.id);
           }
         }
-        if (pick.length < 16) {
+        if (pick.length < DECK_SIZE) {
           own
             .filter((x) => !used.has(x.c.id))
             .sort((a, b) => lstr(b) - lstr(a))
             .forEach((x) => {
-              if (pick.length < 16) pick.push(x);
+              if (pick.length < DECK_SIZE) pick.push(x);
             });
         }
-        return pick.slice(0, 16).map((x) => ({ id: x.c.id, level: x.p.lvl }));
+        return pick.slice(0, DECK_SIZE).map((x) => x.c.id);
+      }
+      // Your hand-built deck, sanitized: owned ids only, deduped, capped.
+      function deckList() {
+        if (!Array.isArray(PROG.deck)) return [];
+        const own = new Set(owned());
+        return [...new Set(PROG.deck)]
+          .filter((id) => own.has(id))
+          .slice(0, DECK_SIZE);
+      }
+      // A custom deck only takes effect once it's complete; until then the
+      // auto-pick plays (so a half-edited deck never enters a match).
+      function deckActive() {
+        return deckList().length === DECK_SIZE;
+      }
+      // What the library shows as "in deck": your picks while editing,
+      // or the auto selection when you've never customized.
+      function displayDeckIds() {
+        return Array.isArray(PROG.deck) ? deckList() : autoDeckIds();
+      }
+      function buildDeck() {
+        const ids = deckActive() ? deckList() : autoDeckIds();
+        return ids.map((id) => ({ id, level: PROG.cards[id].lvl }));
+      }
+      function toggleDeck(id) {
+        if (!PROG.cards[id]) return false; // locked cards can't be decked
+        // first edit materializes the auto deck, so you tweak it, not rebuild
+        let d = Array.isArray(PROG.deck) ? deckList() : autoDeckIds();
+        if (d.includes(id)) {
+          d = d.filter((x) => x !== id);
+          SFX.play("cardPickUp");
+        } else if (d.length >= DECK_SIZE) {
+          SFX.play("stageDeniedLaneFull");
+          deckNotice(`Deck is full — remove a card first.`);
+          return false;
+        } else {
+          d.push(id);
+          SFX.play("cardStage");
+        }
+        PROG.deck = d;
+        saveProg();
+        return true;
+      }
+      function autoFillDeck() {
+        SFX.play("progressSaved");
+        PROG.deck = autoDeckIds();
+        saveProg();
       }
 
       /* ---- screens ---- */
@@ -2488,13 +2685,14 @@
         return "?";
       }
       // FULL view — card-face with overlays (art + name + stats + perk shown over the art)
-      function libCardFull(c, p, idx) {
+      function libCardFull(c, p, idx, dset) {
         const bg = c.art
           ? `<div class="art" style="background-image:url('${c.art}')"></div>`
           : `<div class="glyph">${glyph(c)}</div>`;
         if (!p)
           return `<div class="libcard rar-${c.rarity} lockedcard" data-lib="${c.id}" style="--i:${idx}">${bg}
             <div class="lockveil"><div class="lk">🔒</div><div class="unlocklbl">Unlocks Lv ${unlockLevelOf(c.id)}</div></div></div>`;
+        const inDeck = dset && dset.has(c.id);
         const a = atkAt(c, p.lvl),
           pw = powAt(c, p.lvl);
         const need = p.lvl >= LVL_CAP ? 0 : xpToNext(p.lvl);
@@ -2502,7 +2700,7 @@
           ? `<div class="xpbar"><i style="width:${Math.min(100, (100 * p.xp) / need)}%"></i></div>`
           : `<div class="xpmax">MAX</div>`;
         const perk = c.text ? c.text : "No ability";
-        return `<div class="libcard rar-${c.rarity} filled" data-lib="${c.id}" style="--i:${idx}">${bg}
+        return `<div class="libcard rar-${c.rarity} filled${inDeck ? " indeck" : ""}" data-lib="${c.id}" style="--i:${idx}">${bg}
           <div class="shine"></div>
           <div class="cost">${c.cost}</div><div class="lvbadge">L${p.lvl}</div>
           <div class="namebar">${c.name}</div>
@@ -2514,7 +2712,7 @@
           </div>${bar}</div>`;
       }
       // GRID view — clean full-art thumbnail with a caption BELOW; nothing overlaps the art
-      function libCardGrid(c, p, idx) {
+      function libCardGrid(c, p, idx, dset) {
         const bg = c.art
           ? `<div class="art" style="background-image:url('${c.art}')"></div>`
           : `<div class="glyph">${glyph(c)}</div>`;
@@ -2523,33 +2721,88 @@
             <div class="thumb">${bg}<div class="lockveil"><div class="lk">🔒</div></div></div>
             <div class="cap"><div class="caprow"><span class="cnm dim">${c.name}</span></div>
               <div class="caprow"><span class="clk">🔒 Unlocks Lv ${unlockLevelOf(c.id)}</span></div></div></div>`;
+        const inDeck = dset && dset.has(c.id);
+        const dk = `<button class="deckbtn${inDeck ? " in" : ""}" data-deck="${c.id}"
+            aria-label="${inDeck ? "Remove from deck" : "Add to deck"}">${inDeck ? "✓" : "＋"}</button>`;
         const a = atkAt(c, p.lvl),
           pw = powAt(c, p.lvl);
         const need = p.lvl >= LVL_CAP ? 0 : xpToNext(p.lvl);
         const bar = need
           ? `<div class="capxp"><i style="width:${Math.min(100, (100 * p.xp) / need)}%"></i></div>`
           : `<div class="capxp max"><i style="width:100%"></i></div>`;
-        return `<div class="gcard rar-${c.rarity} filled" data-lib="${c.id}" style="--i:${idx}">
-          <div class="thumb">${bg}<div class="shine"></div></div>
+        return `<div class="gcard rar-${c.rarity} filled${inDeck ? " indeck" : ""}" data-lib="${c.id}" style="--i:${idx}">
+          <div class="thumb">${bg}<div class="shine"></div>${dk}</div>
           <div class="cap">
             <div class="caprow"><span class="ccost">${c.cost}</span><span class="cnm">${c.name}</span><span class="clv">L${p.lvl}</span></div>
             <div class="caprow"><span class="cstat atk">⚔ ${a}</span><span class="cstat pow">◆ ${pw}</span></div>
             ${bar}
           </div></div>`;
       }
+      function deckStatus() {
+        const n = displayDeckIds().length;
+        const auto = !Array.isArray(PROG.deck);
+        const hint = auto
+          ? "Auto-picking your strongest 16 — tap ＋ on a card to customize."
+          : n < DECK_SIZE
+            ? `Pick ${DECK_SIZE - n} more — the auto deck plays until yours is complete.`
+            : "This deck will be used in battle.";
+        return { n, auto, hint };
+      }
+      function deckNotice(msg) {
+        const el = $("deckHint");
+        if (el) {
+          el.textContent = msg;
+          el.classList.add("warn");
+        } else flash(msg);
+      }
+      // Surgical refresh after a toggle: tiles, buttons, and the header count
+      // update in place (a full showLibrary() would replay the entry stagger).
+      function updateDeckUI() {
+        const d = new Set(displayDeckIds());
+        document.querySelectorAll("[data-lib]").forEach((el) => {
+          el.classList.toggle("indeck", d.has(parseInt(el.dataset.lib)));
+        });
+        document.querySelectorAll("[data-deck]").forEach((el) => {
+          const inD = d.has(parseInt(el.dataset.deck));
+          el.classList.toggle("in", inD);
+          el.textContent = inD ? "✓" : "＋";
+          el.setAttribute(
+            "aria-label",
+            inD ? "Remove from deck" : "Add to deck",
+          );
+        });
+        const st = deckStatus();
+        const cnt = $("deckCount");
+        if (cnt) {
+          cnt.textContent = `⚔ Deck ${st.n}/${DECK_SIZE}${st.auto ? " (auto)" : ""}`;
+          cnt.classList.toggle("ok", st.n === DECK_SIZE);
+        }
+        const hint = $("deckHint");
+        if (hint) {
+          hint.textContent = st.hint;
+          hint.classList.remove("warn");
+        }
+      }
       function showLibrary() {
         const tpl = LIB_VIEW === "full" ? libCardFull : libCardGrid;
+        const dset = new Set(displayDeckIds());
         const cards = [...POOL]
           .sort((a, b) => a.cost - b.cost || strength(a) - strength(b))
-          .map((c, idx) => tpl(c, PROG.cards[c.id], idx))
+          .map((c, idx) => tpl(c, PROG.cards[c.id], idx, dset))
           .join("");
         const own = owned().length;
         const on = (v) => (LIB_VIEW === v ? " on" : "");
+        const st = deckStatus();
         $("over").innerHTML = `<div class="menu">
           <div class="menuhead"><b>Card Library — ${own}/${POOL.length}</b><button class="btn newbtn" onclick="openHome()">◀ Back</button></div>
           <div class="libtoggle">
             <button class="segbtn${on("compact")}" onclick="setLibView('compact')">▦ Grid</button>
             <button class="segbtn${on("full")}" onclick="setLibView('full')">🃏 Full view</button>
+          </div>
+          <div class="deckbar">
+            <span id="deckCount" class="deckcount${st.n === DECK_SIZE ? " ok" : ""}">⚔ Deck ${st.n}/${DECK_SIZE}${st.auto ? " (auto)" : ""}</span>
+            <span id="deckHint" class="deckhint">${st.hint}</span>
+            <button class="btn newbtn" onclick="autoFillDeck();updateDeckUI()">✨ Auto-fill</button>
           </div>
           <div class="libgrid${LIB_VIEW === "full" ? " full" : ""}">${cards}</div></div>`;
         $("overlay").classList.remove("hidden");
@@ -2558,6 +2811,13 @@
           .forEach(
             (el) => (el.onclick = () => openLibCard(parseInt(el.dataset.lib))),
           );
+        document.querySelectorAll("[data-deck]").forEach(
+          (el) =>
+            (el.onclick = (e) => {
+              e.stopPropagation();
+              if (toggleDeck(parseInt(el.dataset.deck))) updateDeckUI();
+            }),
+        );
         if (LIB_VIEW === "full") fitFullView();
       }
       // Full view = the whole collection in ONE screen. Pick the fewest columns
@@ -2626,14 +2886,29 @@
         } else {
           info = `<div class="dtag" style="color:var(--dim)">🔒 Locked — beat Level ${unlockLevelOf(id)} to unlock</div>`;
         }
+        const inDeck = displayDeckIds().includes(id);
+        const deckBtn = owned
+          ? `<button class="btn${inDeck ? "" : " primary"}" id="modalDeckBtn"
+              onclick="modalDeckToggle(${id})">${inDeck ? "− Remove from Deck" : "＋ Add to Deck"}</button>`
+          : "";
         $("cmwrap").innerHTML = `<div class="bigcard rar-${c.rarity}">${art}
             <div class="cost">${c.cost}</div>${perk}${lvbadge}
             <div class="nm">${c.name}</div>${c.text ? `<div class="txt">${c.text}</div>` : ""}
             <div class="atk">⚔ ${a}</div><div class="pow">${pw}</div></div>
           <div class="dcap">${c.rarity.toUpperCase()} · Cost ${c.cost}</div>
           ${info}
-          <div class="cmbtns"><button class="btn" onclick="closeCard()">Close</button></div>`;
+          <div class="cmbtns">${deckBtn}<button class="btn" onclick="closeCard()">Close</button></div>`;
         $("cardModal").classList.remove("hidden");
+      }
+      function modalDeckToggle(id) {
+        if (!toggleDeck(id)) return;
+        const inDeck = displayDeckIds().includes(id);
+        const b = $("modalDeckBtn");
+        if (b) {
+          b.textContent = inDeck ? "− Remove from Deck" : "＋ Add to Deck";
+          b.classList.toggle("primary", !inDeck);
+        }
+        updateDeckUI(); // keep the library grid behind the modal in sync
       }
 
       async function startLevel(i) {
@@ -2645,7 +2920,23 @@
         LAST = { level: i, deck };
         MATCH_RESOLVED = false;
         resetTimer(); // fresh match — clear any stale countdown state
-        STATE = await api("/api/new", { level: i, deck });
+        const res = await api("/api/new", { level: i, deck });
+        if (!res || res.started === undefined) {
+          const why = String(
+            (res && res.error) || "The game server didn't respond.",
+          )
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;");
+          $("over").innerHTML = `<div class="setup">
+            <h1 style="font-size:22px" class="lose">⚠ Couldn't start the level</h1>
+            <div class="hint">${why}</div>
+            <div class="cmbtns"><button class="btn primary" onclick="startLevel(${i})">Retry</button>
+              <button class="btn" onclick="openHome()">Menu</button></div>
+          </div>`;
+          $("overlay").classList.remove("hidden");
+          return;
+        }
+        STATE = res;
         SEL = null;
         ANIMATING = false;
         $("overlay").classList.add("hidden");
@@ -2735,7 +3026,9 @@
           ]);
           if (!Array.isArray(LEVELS) || !Array.isArray(POOL)) {
             throw new Error(
-              "API returned unexpected data (levels/pool not arrays).",
+              (LEVELS && LEVELS.error) ||
+                (POOL && POOL.error) ||
+                "API returned unexpected data (levels/pool not arrays).",
             );
           }
           loadProg();
@@ -2745,7 +3038,7 @@
         } catch (e) {
           // Don't leave a black screen — surface the failure so it's debuggable.
           $("over").innerHTML = `<div class="setup">
-            <h1 style="font-size:22px" class="bad">⚠ Failed to start</h1>
+            <h1 style="font-size:22px" class="lose">⚠ Failed to start</h1>
             <div class="hint">The game server API didn't respond correctly.<br>
               <code style="color:#ff9">${String(e && e.message ? e.message : e)}</code><br>
               Check the browser console (F12) and the /api/ endpoints.</div>

@@ -107,7 +107,7 @@ _POOL_SPEC = [
     # --- "Smudgies" full-art sponges (added set) ---
     ("Bandana Sponge", 2, 3, 2, None,
      "grok-524172db-8b9d-4a10-a9d6-93e51c1a38f6.jpg", "rare"),          # ninja thug
-    ("Shades Sponge", 2, 2, 2, _rev("reveal_buff_self", 2),
+    ("Shades Sponge", 2, 2, 2, _rev("reveal_buff_self", 1),
      "grok-74d522af-2ae4-4f1d-8f25-d00d97a4658e.png", "rare"),          # deal-with-it
     ("Aqua Sponge", 3, 2, 3, _ong("ongoing_ally_here", 1),
      "grok-d7bb69ae-8487-4be7-93f2-7fa8681c623f.jpg", "rare"),          # waterbender
@@ -184,14 +184,14 @@ _POOL_SPEC = [
     # cost 4
     ("Cinder Knight", 4, 5, 4, None, "smudgies-nx-05.png", "epic"),
     ("Silver Corsair", 4, 4, 4, None, "smudgies-nx-12.png", "epic"),
-    ("Arcane Adept", 4, 3, 4, _rev("reveal_draw", 2), "smudgies-nx-16.png", "epic"),
+    ("Arcane Adept", 4, 3, 4, _rev("reveal_draw", 1), "smudgies-nx-16.png", "epic"),
     ("Horned Berserker", 4, 5, 4, None,
      "grok-6ef64159-02b2-4d86-a992-912c36e7a3cd.jpg", "epic"),
     # cost 5
     ("Kung-Fu Master", 5, 6, 5, None, "smudgies-nx-01.png", "legendary"),
-    ("Gilded Commander", 5, 5, 5, _rev("reveal_buff_other_lanes", 3), "smudgies-nx-04.png", "epic"),
+    ("Gilded Commander", 5, 4, 5, _rev("reveal_buff_other_lanes", 2), "smudgies-nx-04.png", "epic"),
     ("Monkey Sage", 5, 5, 6, None, "smudgies-nx-10.png", "legendary"),
-    ("Void Sorcerer", 5, 4, 5, _rev("reveal_debuff_here_enemy", 3), "smudgies-nx-15.png", "epic"),
+    ("Void Sorcerer", 5, 4, 4, _rev("reveal_debuff_here_enemy", 3), "smudgies-nx-15.png", "epic"),
     # cost 6
     ("Ember Warlord", 6, 6, 7, None, "smudgies-nx-06.png", "legendary"),
     ("Lava Kaiju", 6, 7, 6, None,
@@ -200,15 +200,57 @@ _POOL_SPEC = [
     # sixth drop — Sponge mascots
     ("Sponge, the Wayfarer", 2, 2, 3, _rev("reveal_buff_here_others", 1),
      "smudgies-sponge-woodland.png", "rare"),
-    ("Sponge, Sakura Blade", 3, 4, 2, _rev("reveal_debuff_here_enemy", 2),
+    ("Sponge, Sakura Blade", 3, 4, 1, _rev("reveal_debuff_here_enemy", 2),
      "smudgies-sponge-sakura-ninja.png", "epic"),
-    ("Sponge, Forest Ranger", 3, 3, 3, _rev("reveal_draw", 1),
+    ("Sponge, Forest Ranger", 3, 3, 2, _rev("reveal_draw", 1),
      "smudgies-sponge-archer.png", "rare"),
     ("Sponge, Hover Scout", 4, 5, 3, None,
      "smudgies-sponge-hoverboard.png", "epic"),          # fast glass cannon
-    ("Sponge, Tide Warden", 5, 5, 6, _rev("reveal_buff_here_others", 2),
+    ("Sponge, Tide Warden", 5, 4, 6, _rev("reveal_buff_here_others", 2),
      "smudgies-sponge-tide-warden.png", "legendary"),    # trident lane commander
 ]
+
+
+def _perk_cost(ab):
+    """Stat-point price of a perk, subtracted from the 2*cost+1 budget.
+
+    Prices reflect expected value in a 3-lane, 2-slots-per-side game:
+      buff_self n           -> n    (literally n stats, delivered at reveal)
+      draw n                -> n+1  (a fresh card is worth a bit over a stat/card)
+      buff_here_others n    -> n-1  (at most ONE other slot here, and it must
+                                     already be revealed — heavily conditional)
+      debuff_here_enemy n   -> n    (up to 2 targets if revealed; can kill)
+      buff_other_lanes n    -> n    (up to 4 targets, typically ~1 revealed)
+      ongoing_ally_here n   -> n    (continuous +n to the one neighbor slot)
+      ongoing_per_ally_here n -> n  (self-buffing version of the same)
+    """
+    if not ab:
+        return 0
+    t, n = ab["type"], ab["amount"]
+    return {
+        "reveal_buff_self": n,
+        "reveal_draw": n + 1,
+        "reveal_buff_here_others": max(0, n - 1),
+        "reveal_debuff_here_enemy": n,
+        "reveal_buff_other_lanes": n,
+        "ongoing_ally_here": n,
+        "ongoing_per_ally_here": n,
+    }[t]
+
+
+def _check_pool(pool):
+    """The lane pool proves itself on every build, like the combat pool:
+    stats plus the perk's price must fit inside the 2*cost+1 budget."""
+    names = set()
+    for c in pool:
+        budget = 2 * c.cost + 1
+        spent = c.attack + c.power + _perk_cost(c.ability)
+        assert spent <= budget, (
+            f"{c.name}: {c.attack}/{c.power} + perk {_perk_cost(c.ability)} "
+            f"= {spent} exceeds budget {budget} (cost {c.cost})")
+        assert 1 <= c.cost <= 6 and c.attack >= 1 and c.power >= 1, c.name
+        assert c.name not in names, f"duplicate name: {c.name}"
+        names.add(c.name)
 
 
 def build_pool():
@@ -216,6 +258,7 @@ def build_pool():
     for i, (name, cost, attack, power, ab, art, rarity) in enumerate(_POOL_SPEC):
         pool.append(LaneCard(i, name, cost, attack, power, ab,
                              (ART + art) if art else None, rarity))
+    _check_pool(pool)
     return pool
 
 
@@ -379,21 +422,33 @@ class LaneGame:
         return self.state()
 
     def _build_player_deck(self, pool, spec):
-        """spec = [{id, level}, ...] from the player's collection; leveled up."""
+        """spec = [{id, level}, ...] from the player's collection; leveled up.
+
+        The collection owns each card once, so duplicate ids in the spec are
+        dropped (a hand-crafted request can't run 16 copies of a legendary).
+        """
         if not spec:
             return build_deck(pool, self.rng, bias=0)
         by_id = {c.id: c for c in pool}
-        deck = []
+        deck, seen = [], set()
         for entry in spec:
-            c = by_id.get(entry.get("id"))
-            if c is not None:
-                deck.append(card_at_level(c, entry.get("level", 1)))
+            if not isinstance(entry, dict):
+                continue
+            cid = entry.get("id")
+            c = by_id.get(cid)
+            if c is None or cid in seen:
+                continue
+            seen.add(cid)
+            deck.append(card_at_level(c, entry.get("level", 1)))
         if len(deck) < 8:                       # safety: pad a too-small deck
             deck += build_deck(pool, self.rng, bias=0)
         return deck[:DECK_SIZE]
 
     def _draw(self, owner, n):
-        for _ in range(n):
+        # n can arrive via a client-tampered game token (a forged reveal_draw
+        # amount) — clamp it, or a huge value spins this loop for seconds of
+        # CPU even though every iteration past HAND_CAP is a no-op.
+        for _ in range(max(0, min(int(n), HAND_CAP))):
             if self.decks[owner] and len(self.hands[owner]) < HAND_CAP:
                 self.hands[owner].append(self.decks[owner].pop())
 
@@ -406,12 +461,19 @@ class LaneGame:
         self.message = f"Turn {self.turn}: you have {self.energy} Energy."
 
     # -- scoring ------------------------------------------------------------
-    def _lane_eff(self, li):
-        """Return {owner: [effective power per card]} including Ongoing perks."""
+    def _lane_eff(self, li, bot_view=False):
+        """Return {owner: [effective power per card]} including Ongoing perks.
+
+        bot_view=True is the bot's information set: your staged-but-unrevealed
+        cards are invisible (the bot still sees its own commitments). Bot
+        decision code must use this, or it peeks at your hidden picks.
+        """
         lane = self.lanes[li]
         out = {}
         for owner in (0, 1):
             cards = lane[owner]
+            if bot_view and owner == 0:
+                cards = [c for c in cards if c.revealed]
             eff = [c.card.power + c.bonus for c in cards]
             for i, src in enumerate(cards):
                 ab = src.card.ability
@@ -427,8 +489,8 @@ class LaneGame:
             out[owner] = [max(0, v) for v in eff]
         return out
 
-    def _lane_totals(self, li):
-        e = self._lane_eff(li)
+    def _lane_totals(self, li, bot_view=False):
+        e = self._lane_eff(li, bot_view=bot_view)
         return sum(e[0]), sum(e[1])
 
     # -- placement ----------------------------------------------------------
@@ -510,7 +572,7 @@ class LaneGame:
         for li in range(LANES):
             if not self._space(1, li):
                 continue
-            h, b = self._lane_totals(li)
+            h, b = self._lane_totals(li, bot_view=True)
             score = (h - b) + card.power * 0.1 - len(self.lanes[li][1]) * 0.5
             if skill == 0:
                 score = -len(self.lanes[li][1])   # naive: just fill emptiest lane
@@ -521,7 +583,7 @@ class LaneGame:
     def _placement_value(self, card, li, skill):
         """Higher-skill heuristic: flip/secure lanes, don't waste on lost ones,
         and (skill 3) weight Attack that can kill an enemy card here."""
-        h, b = self._lane_totals(li)
+        h, b = self._lane_totals(li, bot_view=True)
         nb = b + card.power
         val = card.power
         if b <= h and nb > h:
@@ -531,8 +593,9 @@ class LaneGame:
         space = SLOTS_PER_LANE - len(self.lanes[li][1])
         if nb + space * 3 < h:
             val -= 5                         # realistically can't catch up here
-        if skill >= 3 and self.lanes[li][0]:
-            weakest = min(c.card.power + c.bonus for c in self.lanes[li][0])
+        visible_foes = [c for c in self.lanes[li][0] if c.revealed]
+        if skill >= 3 and visible_foes:
+            weakest = min(c.card.power + c.bonus for c in visible_foes)
             if card.attack >= weakest:
                 val += 3 + card.attack * 0.4  # can kill an enemy scorer
         val -= len(self.lanes[li][1]) * 0.4   # slight spread preference
