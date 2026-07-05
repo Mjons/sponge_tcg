@@ -914,6 +914,20 @@
       .reward.win {
         color: var(--good);
       }
+      /* level-up ceremony */
+      .setup.ceremony {
+        max-height: 92vh;
+        overflow-y: auto;
+        gap: 9px;
+      }
+      .ceremony .bigcard {
+        width: min(58vw, 36vh, 280px);
+        animation: pickin 0.35s backwards;
+      }
+      .statup {
+        color: var(--good);
+        font-weight: 800;
+      }
       /* how-to-play briefing */
       .setup.howto {
         max-width: 420px;
@@ -3448,7 +3462,6 @@
         const played = ms ? new Set(ms.played) : null;
         const survived = ms ? new Set(ms.survived) : null;
         const levelUps = [];
-        const pending = []; // cards that just hit L3 and owe a boon pick
         LAST.deck.forEach((d) => {
           const p = PROG.cards[d.id];
           if (!p) return;
@@ -3465,7 +3478,6 @@
             p.xp -= xpToNext(p.lvl);
             p.lvl++;
             levelUps.push({ id: d.id, lvl: p.lvl });
-            if (p.lvl === 3 && !p.choice) pending.push(d.id);
           }
         });
         // a win banks the next level, offers a pick-1-of-3 card reward, and
@@ -3494,7 +3506,7 @@
           }
         }
         saveProg();
-        showResult(won, levelUps, pending, starResults);
+        showResult(won, levelUps, starResults);
       }
       // ---- pick-1-of-3 unlock rewards (a queue: win pick + star bonuses) ----
       function pickerHTML() {
@@ -3566,7 +3578,102 @@
           row.innerHTML = `⬆ ${byId(id).name}: ${ch === "attack" ? "+1 ⚔ Attack" : "+1 ◆ Power"} locked in`;
       }
 
-      function showResult(won, levelUps, pending, starResults) {
+      // Match end: first a LEVEL-UP CEREMONY (one big card at a time, boon
+      // picks inline, Skip all anytime), then the result summary screen.
+      function showResult(won, levelUps, starResults) {
+        runCeremony(levelUps, () => showResultSummary(won, starResults));
+      }
+      /* ---- level-up ceremony ---- */
+      let CEREMONY = null; // {steps:[{id, from, to}], i, done}
+      function runCeremony(levelUps, done) {
+        // one step per card: first gained level - 1 -> last gained level
+        const steps = [];
+        const at = {};
+        (levelUps || []).forEach((u) => {
+          if (at[u.id] === undefined) {
+            at[u.id] = steps.length;
+            steps.push({ id: u.id, from: u.lvl - 1, to: u.lvl });
+          } else steps[at[u.id]].to = u.lvl;
+        });
+        if (!steps.length) {
+          done();
+          return;
+        }
+        CEREMONY = { steps, i: 0, done };
+        ceremonyStep();
+      }
+      function ceremonyStep() {
+        const cm = CEREMONY;
+        if (!cm || cm.i >= cm.steps.length) {
+          const done = cm && cm.done;
+          CEREMONY = null;
+          if (done) done();
+          return;
+        }
+        SFX.play("cardLevelUp");
+        const st = cm.steps[cm.i];
+        const c = byId(st.id);
+        const p = PROG.cards[st.id];
+        const ch = p ? p.choice : null;
+        const boon = p && needsChoice(p);
+        const a0 = atkAt(c, st.from, ch),
+          a1 = atkAt(c, st.to, ch),
+          p0 = powAt(c, st.from, ch),
+          p1 = powAt(c, st.to, ch);
+        const dAtk =
+          a1 > a0 ? ` <span class="statup">⚔ ${a0} → ${a1}</span>` : "";
+        const dPow =
+          p1 > p0 ? ` <span class="statup">◆ ${p0} → ${p1}</span>` : "";
+        const perkUp =
+          st.to >= 4 && st.from < 4 && c.textPlus
+            ? `<div class="dtag statup">✦ perk upgraded: ${c.textPlus}</div>`
+            : "";
+        const need = p && p.lvl < LVL_CAP ? xpToNext(p.lvl) : 0;
+        const bar = need
+          ? `<div class="xpbar big"><i style="width:${Math.min(100, (100 * p.xp) / need)}%"></i></div>`
+          : `<div class="dtag" style="color:var(--amber)">MAX LEVEL</div>`;
+        const art = c.art
+          ? `<div class="art" style="background-image:url('${c.art}')"></div><div class="veil"></div>`
+          : `<div class="glyph">${glyph(c)}</div>`;
+        const txt = textAt(c, st.to);
+        const action = boon
+          ? `<div class="choicerow">🔱 L3 boon — pick one:
+              <button class="btn primary" onclick="ceremonyBoon(${st.id},'attack')">+1 ⚔</button>
+              <button class="btn primary" onclick="ceremonyBoon(${st.id},'power')">+1 ◆</button></div>`
+          : `<button class="btn primary" onclick="ceremonyNext()">Next ▶</button>`;
+        $("over").innerHTML = `<div class="setup ceremony">
+          <div class="hint">Card ${cm.i + 1}/${cm.steps.length}</div>
+          <h1 class="win" style="font-size:24px">⬆ LEVEL UP!</h1>
+          <div class="bigcard rar-${c.rarity}">${art}
+            <div class="cost">${c.cost}</div>
+            <div class="lvbadge" style="font-size:14px">L${st.to}</div>
+            <div class="nm">${c.name}</div>${txt ? `<div class="txt">${txt}</div>` : ""}
+            <div class="atk">⚔ ${a1}</div><div class="pow">${p1}</div></div>
+          <div class="dtag">${c.name} — Level ${st.from} → <b>L${st.to}</b>${dAtk}${dPow}</div>
+          ${perkUp}${bar}
+          <div class="cmbtns">${action}
+            <button class="btn" onclick="ceremonySkip()">Skip all ▶▶</button></div>
+        </div>`;
+        $("overlay").classList.remove("hidden");
+      }
+      function ceremonyNext() {
+        if (!CEREMONY) return;
+        CEREMONY.i++;
+        ceremonyStep();
+      }
+      function ceremonyBoon(id, ch) {
+        chooseUpgrade(id, ch);
+        ceremonyNext();
+      }
+      function ceremonySkip() {
+        // unpicked boons stay pending — the Library marks them with ⬆
+        SFX.play("click");
+        if (!CEREMONY) return;
+        CEREMONY.i = CEREMONY.steps.length;
+        ceremonyStep();
+      }
+      /* ---- result summary ---- */
+      function showResultSummary(won, starResults) {
         const s = STATE;
         const t = won
           ? ["VICTORY", "win"]
@@ -3576,18 +3683,6 @@
         const xphint = s.matchStats
           ? `XP — played +${won ? 3 : 1} · kill +1 · survived +1 · benched +${won ? 1 : 0}`
           : `+${won ? 3 : 1} XP to each card you played.`;
-        const ups = levelUps.length
-          ? `<div class="reward">⬆ ${levelUps.map((u) => byId(u.id).name + " → L" + u.lvl).join(", ")}</div>`
-          : "";
-        const picks = (pending || [])
-          .map(
-            (
-              id,
-            ) => `<div class="reward choicerow">🔱 ${byId(id).name} hit L3 — pick a boon:
-              <button class="btn" onclick="chooseUpgrade(${id},'attack',this)">+1 ⚔</button>
-              <button class="btn" onclick="chooseUpgrade(${id},'power',this)">+1 ◆</button></div>`,
-          )
-          .join("");
         // star objectives: ★ new, ★ already earned (dim), ☆ missed
         const newStars = (starResults || []).filter((r) => r.got).length;
         const stars = (starResults || [])
@@ -3612,16 +3707,12 @@
         $("over").innerHTML = `<h1 class="${t[1]}">${t[0]}</h1>
           <div style="font-size:26px;font-weight:800">${s.score.you} – ${s.score.foe}</div>
           <div class="hint">${xphint}</div>
-          ${ups}${picks}${stars}${picker}
+          ${stars}${picker}
           <div class="cmbtns">${btns}</div>`;
         $("overlay").classList.remove("hidden");
-        // reward jingle: XP tally → level-ups → new stars → reward offer → saved
+        // reward jingle: XP tally → new stars → reward offer → saved
         SFX.play("xpGain");
         let dly = 550;
-        if (levelUps.length) {
-          setTimeout(() => SFX.play("cardLevelUp"), dly);
-          dly += 600;
-        }
         if (newStars) {
           setTimeout(() => SFX.play("levelSelect"), dly);
           dly += 500;

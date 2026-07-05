@@ -103,10 +103,13 @@ nothing but churn everything; only player-facing copy is branded). Files:
   kill** (max +2) and **+1 for surviving** the match; benched deck cards only
   trickle +1 on a win (the server reports `matchStats` per match). Leveling is
   a set of **milestones** instead of a flat stat drip: **L2** +1 Power, **L3**
-  your **choice** of +1 Attack or +1 Power (picked on the result screen or in
+  your **choice** of +1 Attack or +1 Power (picked during the ceremony or in
   the Library — ⬆ marks an unspent boon), **L4** the card's **perk amount +1**
   (perkless cards get +1 Power), **L5** +1 Attack **and** +1 Power. Ability
-  cards now scale their abilities, not just their bodies.
+  cards now scale their abilities, not just their bodies. Level-ups play as a
+  **card-by-card ceremony** after the match — each card flips up big with its
+  new level, stat gains, XP bar, and boon buttons — with a **Skip all** that
+  leaves unpicked boons claimable in the Library.
 - **How-to-play briefing:** entering the Tutorial (until it's beaten) or your
   first-ever match opens a compact 4-step rules overlay — play (Energy),
   reveal (perks), clash (⚔ vs ◆), score (points per panel) — plus a rundown of
