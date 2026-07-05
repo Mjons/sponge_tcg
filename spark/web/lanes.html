@@ -885,6 +885,29 @@
       .reward.win {
         color: var(--good);
       }
+      /* how-to-play briefing */
+      .setup.howto {
+        max-width: 420px;
+        max-height: 86vh;
+        overflow-y: auto;
+        gap: 9px;
+      }
+      .howstep {
+        font-size: 12.5px;
+        line-height: 1.45;
+        color: #dbe4ee;
+        text-align: left;
+        background: #10161f;
+        border: 1px solid #232e3c;
+        border-radius: 9px;
+        padding: 8px 11px;
+      }
+      .howmod {
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--amber);
+        text-align: left;
+      }
       /* pick-1-of-3 unlock reward (result screen + home reclaim) */
       .pickwrap {
         display: flex;
@@ -1647,6 +1670,13 @@
         <span class="turn" id="turn"></span>
         <span class="timer" id="timer"></span>
         <span class="record" id="record"></span>
+        <button
+          class="btn newbtn"
+          onclick="showHowTo(false)"
+          title="How to play"
+        >
+          ?
+        </button>
         <button
           class="btn newbtn"
           onclick="showOptions()"
@@ -2723,6 +2753,7 @@
           deck: null,
           pendingPicks: [], // queue of {level, offers:[ids]|null} 1-of-3 rewards
           stars: {}, // levelId -> [bool, bool] objective stars
+          seenHowTo: false, // how-to briefing auto-shows until dismissed once
         };
         starterSet().forEach(
           (id) => (p.cards[id] = { xp: 0, lvl: 1, choice: null }),
@@ -2781,6 +2812,7 @@
           for (const [k, arr] of Object.entries(old.stars))
             if (LEVELS[k] && Array.isArray(arr))
               p.stars[k] = [!!arr[0], !!arr[1]];
+        p.seenHowTo = !!old.seenHowTo;
         return p;
       }
       function loadProg() {
@@ -3297,9 +3329,59 @@
         STATE = res;
         SEL = null;
         ANIMATING = false;
-        $("overlay").classList.add("hidden");
         render();
-        playTurnStartCues(); // opening hand + first round begins
+        // the Tutorial (until beaten) and any first-ever match open with the
+        // how-to-play briefing; everyone else drops straight onto the board
+        if (!PROG.seenHowTo || (i === 0 && !PROG.beaten[0])) {
+          _howtoIntro = true;
+          showHowTo(true);
+        } else {
+          $("overlay").classList.add("hidden");
+          playTurnStartCues(); // opening hand + first round begins
+        }
+      }
+
+      /* ---- how-to-play briefing (auto on tutorial / first match; ? button) ---- */
+      let _howtoIntro = false; // true while the briefing is gating match start
+      function showHowTo(intro) {
+        SFX.play("menuOpen");
+        const mods = ((STATE && STATE.lanes) || [])
+          .map((L, i) =>
+            L.mod
+              ? `<div class="howmod">${L.mod.icon} <b>${L.mod.name}</b> (Panel ${i + 1}) — ${L.mod.desc}</div>`
+              : "",
+          )
+          .join("");
+        $("over").innerHTML = `<div class="setup howto">
+          <h1 style="font-size:22px" class="win">📖 How to play</h1>
+          <div class="howstep"><b>⚡ Play cards.</b> On round T you have T Energy.
+            Drag cards from your hand into a slot on YOUR side (bottom) of a
+            panel — a card costs the ⚡ number in its corner.</div>
+          <div class="howstep"><b>👁 Reveal.</b> Tap <b>Reveal</b> when ready —
+            both sides flip at once. ✦ perks fire On Reveal; ∞ perks stay on
+            while the card is in play.</div>
+          <div class="howstep"><b>⚔ Clash.</b> Cards in facing slots strike each
+            other: ⚔ Attack chips away ◆ Power. At 0 ◆ a card is destroyed and
+            its slot opens up. Unopposed cards don't take damage.</div>
+          <div class="howstep"><b>★ Score.</b> After combat you bank <b>1 point
+            per panel you lead</b> (🏆 Golden pays 2). Most points after 9
+            rounds wins!</div>
+          ${mods ? `<div class="reward" style="margin-top:4px">This match's panels:</div>${mods}` : ""}
+          <div class="cmbtns"><button class="btn primary" onclick="closeHowTo()">${intro ? "Fight! ▶" : "◀ Back to the match"}</button></div>
+        </div>`;
+        $("overlay").classList.remove("hidden");
+      }
+      function closeHowTo() {
+        if (!PROG.seenHowTo) {
+          PROG.seenHowTo = true;
+          saveProg();
+        }
+        SFX.play("menuClose");
+        $("overlay").classList.add("hidden");
+        if (_howtoIntro) {
+          _howtoIntro = false;
+          playTurnStartCues(); // opening hand + first round begins
+        }
       }
 
       function finishMatch() {

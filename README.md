@@ -107,6 +107,11 @@ nothing but churn everything; only player-facing copy is branded). Files:
   the Library — ⬆ marks an unspent boon), **L4** the card's **perk amount +1**
   (perkless cards get +1 Power), **L5** +1 Attack **and** +1 Power. Ability
   cards now scale their abilities, not just their bodies.
+- **How-to-play briefing:** entering the Tutorial (until it's beaten) or your
+  first-ever match opens a compact 4-step rules overlay — play (Energy),
+  reveal (perks), clash (⚔ vs ◆), score (points per panel) — plus a rundown of
+  this match's active panel modifiers. Reopen it anytime from the **?** button
+  in the top bar; the turn timer pauses while it's up.
 - **Mobile-first UI:** a narrow single-column layout (max-width 480px) with thin,
   card-focused lanes. **2 slots per side per lane**; each card **fills the lane
   width** and is locked to the **2:3 aspect ratio of the art**. The hand is a
