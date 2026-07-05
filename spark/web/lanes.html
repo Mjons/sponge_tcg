@@ -397,8 +397,37 @@
         color: var(--bad);
       }
       .slot.staged {
-        border: 1.5px solid var(--amber);
+        border: 1.5px dashed var(--amber);
         box-shadow: 0 0 9px #f4b74066;
+        animation: stagedPulse 1.6s ease-in-out infinite;
+      }
+      .slot.staged .art {
+        filter: saturate(0.75) brightness(0.85);
+      }
+      @keyframes stagedPulse {
+        50% {
+          box-shadow: 0 0 14px #f4b740aa;
+        }
+      }
+      /* "STAGED" ribbon: only while the card awaits the reveal */
+      .slot .stagetag {
+        display: none;
+      }
+      .slot.staged .stagetag {
+        display: block;
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) rotate(-8deg);
+        background: var(--amber);
+        color: #1a1204;
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        padding: 2px 7px;
+        border-radius: 4px;
+        box-shadow: 0 2px 6px #000a;
+        pointer-events: none;
       }
       .rar-legendary.filled {
         border-color: #e0b04a;
@@ -2066,6 +2095,23 @@
         mb.className = "msgbar";
         mb.textContent = `${m.icon} ${m.name} — ${m.desc}`;
       }
+      // Step-by-step coaching in the message bar while the Tutorial is
+      // unbeaten — tells the player what to do NOW instead of generic status.
+      function coachHint(s) {
+        if (!PROG || s.level !== 0 || PROG.beaten[0] || s.over || ANIMATING)
+          return null;
+        const staged = s.lanes
+          .flatMap((L) => L.you)
+          .filter((c) => c.revealed === false).length;
+        const playable = s.you.hand.some((c) => c.playable);
+        if (!staged && playable)
+          return "📖 Drag a card from your hand into a slot on YOUR side (bottom half of a panel).";
+        if (staged && playable)
+          return `📖 ${s.energy}⚡ left — stage another card, or tap Reveal to lock in.`;
+        if (staged)
+          return "📖 Tap Reveal — both sides flip, clash, and every panel you lead banks a point.";
+        return "📖 Nothing you can afford — tap Reveal and collect next round's Energy.";
+      }
       function artOrGlyph(c) {
         return c.art
           ? `<div class="art" style="background-image:url('${c.art}')"></div><div class="veil"></div>`
@@ -2081,7 +2127,8 @@
         const atk =
           c.attack != null ? `<div class="atk">${c.attack}</div>` : "";
         return `<div class="slot filled rar-${c.rarity}${staged}" data-uid="${c.uid}" data-base="${base}">
-    ${artOrGlyph(c)}<div class="cost">${c.cost}</div>${perk}${atk}<div class="pow ${powCls}">${c.power}</div></div>`;
+    ${artOrGlyph(c)}<div class="cost">${c.cost}</div>${perk}${atk}<div class="pow ${powCls}">${c.power}</div>
+    <div class="stagetag">STAGED</div></div>`;
       }
       function emptySlot(lane, canTarget) {
         return `<div class="slot empty${canTarget ? " targetable" : ""}" ${canTarget ? `data-lane="${lane}"` : ""}></div>`;
@@ -2154,7 +2201,10 @@
         mb.textContent =
           SEL != null
             ? "Tap a panel slot to place it · Esc to cancel."
-            : s.error || s.message || "Tap a card to view it, then Play.";
+            : s.error ||
+              coachHint(s) ||
+              s.message ||
+              "Tap a card to view it, then Play.";
         $("endBtn").disabled = s.over || ANIMATING;
         $("resetBtn").disabled = s.over || ANIMATING;
         document
@@ -3357,9 +3407,11 @@
           <div class="howstep"><b>⚡ Play cards.</b> On round T you have T Energy.
             Drag cards from your hand into a slot on YOUR side (bottom) of a
             panel — a card costs the ⚡ number in its corner.</div>
-          <div class="howstep"><b>👁 Reveal.</b> Tap <b>Reveal</b> when ready —
-            both sides flip at once. ✦ perks fire On Reveal; ∞ perks stay on
-            while the card is in play.</div>
+          <div class="howstep"><b>👁 Reveal.</b> Staged cards (amber, marked
+            STAGED) aren't locked in yet — the rival can't see them, and it
+            commits its own cards blind. Tap <b>Reveal</b> and both sides flip
+            at once: ✦ perks fire On Reveal; ∞ perks stay on while the card is
+            in play.</div>
           <div class="howstep"><b>⚔ Clash.</b> Cards in facing slots strike each
             other: ⚔ Attack chips away ◆ Power. At 0 ◆ a card is destroyed and
             its slot opens up. Unopposed cards don't take damage.</div>

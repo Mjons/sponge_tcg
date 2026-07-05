@@ -632,7 +632,8 @@ class LaneGame:
         self.hands[0].pop(hand_index)
         self.energy -= cost
         self._place(0, card, lane)
-        self.message = f"Staged {card.name} in Panel {lane + 1}."
+        self.message = (f"Staged {card.name} in Panel {lane + 1} — "
+                        f"hidden from the rival until you Reveal.")
         return self.state()
 
     def reset_turn(self):
