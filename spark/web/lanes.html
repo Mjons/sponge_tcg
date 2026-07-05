@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
     />
-    <title>SPARK: Lanes</title>
+    <title>SMUDGE: PANEL BRAWL</title>
     <style>
       :root {
         --bg: #0e1116;
@@ -239,6 +239,30 @@
       .arrow {
         font-size: 10px;
         color: var(--dim);
+      }
+      /* arena modifier chip pinned to the top of a lane */
+      .lanemod {
+        flex: 0 0 auto;
+        align-self: center;
+        max-width: calc(100% - 6px);
+        margin-top: 3px;
+        font-size: 9px;
+        font-weight: 800;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 2px 8px;
+        border-radius: 20px;
+        border: 1px solid #3a2f14;
+        background: #171207;
+        color: var(--amber);
+        cursor: pointer;
+      }
+      .lanemod.none {
+        visibility: hidden;
+      }
+      .lanemod.firing {
+        animation: firing 0.42s;
       }
 
       /* CARDS — 2:3 art ratio, sized to fit lane width AND board height */
@@ -861,6 +885,53 @@
       .reward.win {
         color: var(--good);
       }
+      /* pick-1-of-3 unlock reward (result screen + home reclaim) */
+      .pickwrap {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: center;
+      }
+      .pickrow {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+      }
+      .pickrow .hcard {
+        width: min(112px, 26vw);
+        margin-left: 0;
+        cursor: pointer;
+        animation: pickin 0.4s backwards;
+      }
+      .pickrow .hcard:nth-child(2) {
+        animation-delay: 0.09s;
+      }
+      .pickrow .hcard:nth-child(3) {
+        animation-delay: 0.18s;
+      }
+      @keyframes pickin {
+        from {
+          transform: translateY(16px) scale(0.92);
+          opacity: 0;
+        }
+      }
+      .pickrow .hcard:hover {
+        box-shadow:
+          0 0 0 2px var(--amber),
+          0 0 16px #f4b74088;
+        transform: translateY(-4px);
+      }
+      /* L3 boon picker (result screen + library popup) */
+      .choicerow {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--amber);
+      }
 
       /* campaign + library panels */
       .menu {
@@ -928,6 +999,29 @@
         padding: 3px 8px;
         border-radius: 20px;
         border: 1px solid var(--line);
+      }
+      .lvmods {
+        font-size: 13px;
+        letter-spacing: 2px;
+        flex: 0 0 auto;
+      }
+      .lvstars {
+        font-size: 11px;
+        letter-spacing: 2px;
+        color: var(--amber);
+      }
+      /* star-objective result lines */
+      .objrow {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--dim);
+      }
+      .objrow.got {
+        color: var(--good);
+      }
+      .objrow.had {
+        color: var(--amber);
+        opacity: 0.75;
       }
       .d-Easy {
         color: var(--good);
@@ -1549,7 +1643,7 @@
   <body>
     <div id="app">
       <div class="topbar">
-        <span class="brand">◆ LANES</span>
+        <span class="brand">◆ SMUDGE</span>
         <span class="turn" id="turn"></span>
         <span class="timer" id="timer"></span>
         <span class="record" id="record"></span>
@@ -1927,6 +2021,21 @@
         if (t) return "✦";
         return "◈";
       }
+      // Tailwind lanes discount every card by 1 Energy (min 1); the server
+      // enforces the same rule in play_cost().
+      function laneCost(c, L) {
+        return L.mod && L.mod.key === "tailwind"
+          ? Math.max(1, c.cost - 1)
+          : c.cost;
+      }
+      function modInfo(i) {
+        const m = STATE && STATE.lanes[i] && STATE.lanes[i].mod;
+        if (!m) return;
+        SFX.play("hover");
+        const mb = $("msg");
+        mb.className = "msgbar";
+        mb.textContent = `${m.icon} ${m.name} — ${m.desc}`;
+      }
       function artOrGlyph(c) {
         return c.art
           ? `<div class="art" style="background-image:url('${c.art}')"></div><div class="veil"></div>`
@@ -1952,7 +2061,7 @@
         const canPlace =
           SEL != null &&
           s.you.hand[SEL] &&
-          s.you.hand[SEL].cost <= s.energy &&
+          laneCost(s.you.hand[SEL], L) <= s.energy &&
           L.youSpace > 0;
         let foe = "";
         L.foe.forEach((c) => (foe += slotHTML(c)));
@@ -1965,7 +2074,12 @@
         const arrow = L.leader === "you" ? "▼" : L.leader === "foe" ? "▲" : "–";
         const wc =
           L.leader === "you" ? "win-you" : L.leader === "foe" ? "win-foe" : "";
+        // the chip renders (hidden) even without a mod so lanes stay aligned
+        const mod = L.mod
+          ? `<div class="lanemod" onclick="modInfo(${L.index})">${L.mod.icon} ${L.mod.name}</div>`
+          : `<div class="lanemod none">·</div>`;
         return `<div class="lane ${wc}" data-lane="${L.index}">
+    ${mod}
     <div class="slots foe" data-lane-foe="${L.index}">${foe}</div>
     <div class="banner">
       <span class="pw foe ${L.foePower ? "" : "dim"}" data-pw-foe="${L.index}">${L.foePower}</span>
@@ -2009,7 +2123,7 @@
         mb.className = "msgbar" + (s.error ? " err" : "");
         mb.textContent =
           SEL != null
-            ? "Tap a lane slot to place it · Esc to cancel."
+            ? "Tap a panel slot to place it · Esc to cancel."
             : s.error || s.message || "Tap a card to view it, then Play.";
         $("endBtn").disabled = s.over || ANIMATING;
         $("resetBtn").disabled = s.over || ANIMATING;
@@ -2069,7 +2183,11 @@
         }
         const e = err.toLowerCase();
         if (e.includes("energy")) SFX.play("stageDeniedEnergy");
-        else if (e.includes("full") || e.includes("lane"))
+        else if (
+          e.includes("full") ||
+          e.includes("panel") ||
+          e.includes("lane")
+        )
           SFX.play("stageDeniedLaneFull");
       }
       async function placeCard(lane) {
@@ -2102,7 +2220,7 @@
       }
       function markDroppable(c) {
         STATE.lanes.forEach((L) => {
-          if (c.cost <= STATE.energy && L.youSpace > 0) {
+          if (laneCost(c, L) <= STATE.energy && L.youSpace > 0) {
             document
               .querySelectorAll(`[data-lane-you="${L.index}"] .slot.empty`)
               .forEach((s) => {
@@ -2362,6 +2480,18 @@
               spawnFloat(h.uid, h.delta);
             });
             await sleep(480);
+          } else if (ev.kind === "mod") {
+            // arena hazard fires (e.g. Volcanic burn): flare the chip, float
+            // the damage on every card it touched
+            const chip = document.querySelector(
+              `.lane[data-lane="${ev.lane}"] .lanemod`,
+            );
+            if (chip) {
+              chip.classList.add("firing");
+              setTimeout(() => chip.classList.remove("firing"), 430);
+            }
+            ev.hits.forEach((h) => spawnFloat(h.uid, h.delta));
+            await sleep(480);
           } else if (ev.kind === "death") {
             const el = document.querySelector(`.slot[data-uid="${ev.uid}"]`);
             if (el) {
@@ -2386,7 +2516,7 @@
               );
               spawnFloatEl(
                 document.querySelector(`[data-pw-${ev.side}="${ev.lane}"]`),
-                "+1",
+                "+" + (ev.pts || 1),
                 ev.side === "you" ? "pos" : "neg",
               );
             }
@@ -2409,12 +2539,30 @@
       const CURVE = { 1: 1, 2: 4, 3: 4, 4: 3, 5: 2, 6: 2 };
       const LVL_CAP = 5;
       const DECK_SIZE = 16;
-      const PROG_VER = 2; // bump when the save schema changes (old saves are migrated, not wiped)
+      const PROG_VER = 4; // bump when the save schema changes (old saves are migrated, not wiped)
       const byId = (id) => POOL.find((c) => c.id === id);
       const strength = (c) =>
         c.attack + c.power + 2 * RARW[c.rarity] + (c.text ? 2 : 0);
-      const atkAt = (c, l) => c.attack + Math.floor((l - 1) / 2);
-      const powAt = (c, l) => c.power + (l - 1);
+      // Milestone leveling (mirrors level_bonus in lanes.py):
+      //   L2 +1◆ · L3 +1⚔ or +1◆ (player's choice) · L4 perk amount +1
+      //   (+1◆ for perkless cards) · L5 +1⚔ +1◆
+      const bonusAt = (c, l, choice) => {
+        const b = { atk: 0, pow: 0, perk: 0 };
+        if (l >= 2) b.pow++;
+        if (l >= 3) choice === "attack" ? b.atk++ : b.pow++;
+        // textPlus (from pool_meta) is non-null exactly when the SERVER
+        // treats the card as perked — don't infer it from text truthiness
+        if (l >= 4) c.textPlus ? b.perk++ : b.pow++;
+        if (l >= 5) {
+          b.atk++;
+          b.pow++;
+        }
+        return b;
+      };
+      const atkAt = (c, l, choice) => c.attack + bonusAt(c, l, choice).atk;
+      const powAt = (c, l, choice) => c.power + bonusAt(c, l, choice).pow;
+      const textAt = (c, l) => (l >= 4 && c.textPlus ? c.textPlus : c.text);
+      const needsChoice = (p) => !!p && p.lvl >= 3 && !p.choice; // L3 boon unpicked
       const xpToNext = (l) => l * 3; // L1->2:3, 2->3:6 ...
 
       function starterSet() {
@@ -2439,6 +2587,132 @@
         const per = Math.ceil(lk.length / Math.max(1, LEVELS.length));
         return lk.slice(i * per, (i + 1) * per);
       }
+      function shuffle(a) {
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      }
+      // Pick-1-of-3: every campaign win offers up to 3 locked cards — that
+      // level's reward tier first, then overdue cards from earlier tiers.
+      // The two you pass over return to the pool for future wins.
+      function offersFor(level) {
+        const own = new Set(owned());
+        const fresh = shuffle(
+          unlocksForLevel(level).filter((c) => !own.has(c.id)),
+        );
+        const overdue = [];
+        for (let i = 0; i < level; i++)
+          for (const c of unlocksForLevel(i))
+            if (!own.has(c.id)) overdue.push(c);
+        return fresh
+          .concat(shuffle(overdue))
+          .slice(0, 3)
+          .map((c) => c.id);
+      }
+
+      /* ---- star objectives: 2 optional challenges per level (win = 3rd star).
+         Only evaluated on a VICTORY with server matchStats present; each
+         first-time star queues one bonus pick-1-of-3. ---- */
+      const STARS = [
+        [
+          {
+            desc: "Lead all 3 panels in one round",
+            check: (c) => c.sweeps >= 1,
+          },
+          { desc: "Win without losing a card", check: (c) => c.deaths === 0 },
+        ],
+        [
+          { desc: "Win by 4+ points", check: (c) => c.margin >= 4 },
+          { desc: "Kill 3+ enemy cards", check: (c) => c.kills >= 3 },
+        ],
+        [
+          {
+            desc: "No epics or legendaries in your deck",
+            check: (c) =>
+              c.deckCards.every(
+                (x) => x.rarity === "common" || x.rarity === "rare",
+              ),
+          },
+          {
+            desc: "Lead all 3 panels at the end",
+            check: (c) => c.lanesLed === 3,
+          },
+        ],
+        [
+          {
+            desc: "Lead the modifier panel at the end",
+            check: (c) => c.modLanesLed,
+          },
+          {
+            desc: "End with 4+ of your cards alive",
+            check: (c) => c.survivors >= 4,
+          },
+        ],
+        [
+          {
+            desc: "8+ cards costing ≤3 in your deck",
+            check: (c) => c.deckCards.filter((x) => x.cost <= 3).length >= 8,
+          },
+          { desc: "Score 12+ points", check: (c) => c.score >= 12 },
+        ],
+        [
+          { desc: "Kill 5+ enemy cards", check: (c) => c.kills >= 5 },
+          {
+            desc: "Lead every modifier panel at the end",
+            check: (c) => c.modLanesLed,
+          },
+        ],
+        [
+          { desc: "Score 14+ points", check: (c) => c.score >= 14 },
+          {
+            desc: "Lead all 3 panels in 2 different rounds",
+            check: (c) => c.sweeps >= 2,
+          },
+        ],
+        [
+          { desc: "Lose no more than 2 cards", check: (c) => c.deaths <= 2 },
+          { desc: "Play 6+ ability cards", check: (c) => c.abilityPlayed >= 6 },
+        ],
+        [
+          {
+            desc: "Lead every modifier panel at the end",
+            check: (c) => c.modLanesLed,
+          },
+          { desc: "Lose no more than 1 card", check: (c) => c.deaths <= 1 },
+        ],
+        [
+          { desc: "Kill 6+ enemy cards", check: (c) => c.kills >= 6 },
+          { desc: "Win by 5+ points", check: (c) => c.margin >= 5 },
+        ],
+      ];
+      function starCtx() {
+        const s = STATE,
+          ms = s.matchStats || {};
+        const modLanes = (s.lanes || []).filter((L) => L.mod);
+        return {
+          score: s.score.you,
+          margin: s.score.you - s.score.foe,
+          kills: Object.values(ms.kills || {}).reduce((a, b) => a + b, 0),
+          deaths: ms.deaths || 0,
+          sweeps: ms.sweeps || 0,
+          survivors: (ms.survived || []).length,
+          lanesLed: s.laneWins ? s.laneWins.you : 0,
+          abilityPlayed: (ms.played || []).map(byId).filter((c) => c && c.text)
+            .length,
+          deckCards: LAST.deck.map((d) => byId(d.id)).filter(Boolean),
+          modLanesLed:
+            modLanes.length > 0 && modLanes.every((L) => L.leader === "you"),
+        };
+      }
+      function starsEarned(lv) {
+        const st = PROG.stars[lv] || [];
+        return (PROG.beaten[lv] ? 1 : 0) + (st[0] ? 1 : 0) + (st[1] ? 1 : 0);
+      }
+      function totalStars() {
+        return LEVELS.reduce((n, L) => n + starsEarned(L.id), 0);
+      }
       function defaultProg() {
         // deck: null = "auto-pick my strongest 16"; an id array = hand-built
         const p = {
@@ -2447,8 +2721,12 @@
           beaten: {},
           cards: {},
           deck: null,
+          pendingPicks: [], // queue of {level, offers:[ids]|null} 1-of-3 rewards
+          stars: {}, // levelId -> [bool, bool] objective stars
         };
-        starterSet().forEach((id) => (p.cards[id] = { xp: 0, lvl: 1 }));
+        starterSet().forEach(
+          (id) => (p.cards[id] = { xp: 0, lvl: 1, choice: null }),
+        );
         return p;
       }
       // Salvage an older or partially-broken save instead of wiping it:
@@ -2469,12 +2747,40 @@
             p.cards[id] = {
               xp: Math.max(0, parseInt(c.xp) || 0),
               lvl: Math.max(1, Math.min(parseInt(c.lvl) || 1, LVL_CAP)),
+              // pre-milestone saves have no choice; the L3 boon shows as
+              // pickable in the library (⬆) until the player decides
+              choice:
+                c.choice === "attack" || c.choice === "power" ? c.choice : null,
             };
           }
         if (Array.isArray(old.deck))
           p.deck = [...new Set(old.deck.map((x) => parseInt(x)))]
             .filter((id) => p.cards[id])
             .slice(0, DECK_SIZE);
+        // v3 saves held a single pendingPick object; v4+ hold a queue
+        const rawPicks = Array.isArray(old.pendingPicks)
+          ? old.pendingPicks
+          : old.pendingPick
+            ? [old.pendingPick]
+            : [];
+        for (const pk of rawPicks) {
+          if (!pk || typeof pk !== "object") continue;
+          const offers = Array.isArray(pk.offers)
+            ? pk.offers
+                .map((x) => parseInt(x))
+                .filter((x) => byId(x) && !p.cards[x])
+                .slice(0, 3)
+            : null; // null = offers drawn when the picker shows
+          if (offers === null || offers.length)
+            p.pendingPicks.push({
+              level: Math.max(0, parseInt(pk.level) || 0),
+              offers,
+            });
+        }
+        if (old.stars && typeof old.stars === "object")
+          for (const [k, arr] of Object.entries(old.stars))
+            if (LEVELS[k] && Array.isArray(arr))
+              p.stars[k] = [!!arr[0], !!arr[1]];
         return p;
       }
       function loadProg() {
@@ -2486,6 +2792,9 @@
         }
         if (raw && raw.ver === PROG_VER && raw.cards) {
           PROG = raw;
+          // normalize fields a hand-edited or truncated save might lack
+          if (!Array.isArray(PROG.pendingPicks)) PROG.pendingPicks = [];
+          if (!PROG.stars || typeof PROG.stars !== "object") PROG.stars = {};
         } else {
           PROG = migrateProg(raw);
           saveProg();
@@ -2509,7 +2818,9 @@
           .map((id) => ({ c: byId(id), p: PROG.cards[id] }))
           .filter((x) => x.c);
         const lstr = (x) =>
-          atkAt(x.c, x.p.lvl) + powAt(x.c, x.p.lvl) + (x.c.text ? 2 : 0);
+          atkAt(x.c, x.p.lvl, x.p.choice) +
+          powAt(x.c, x.p.lvl, x.p.choice) +
+          (x.c.text ? 2 : 0);
         const pick = [];
         const used = new Set();
         for (const cost in CURVE) {
@@ -2551,7 +2862,11 @@
       }
       function buildDeck() {
         const ids = deckActive() ? deckList() : autoDeckIds();
-        return ids.map((id) => ({ id, level: PROG.cards[id].lvl }));
+        return ids.map((id) => ({
+          id,
+          level: PROG.cards[id].lvl,
+          choice: PROG.cards[id].choice,
+        }));
       }
       function toggleDeck(id) {
         if (!PROG.cards[id]) return false; // locked cards can't be decked
@@ -2582,11 +2897,26 @@
       function openHome() {
         SFX.play("menuOpen");
         MUSIC.playMenu(); // menu theme (quiet); swaps to the arena track on play
+        // unclaimed 1-of-3 rewards (page closed mid-result) must be
+        // claimed before anything else
+        const picker = (PROG.pendingPicks || []).length ? pickerHTML() : "";
+        if (picker) {
+          $("over").innerHTML = `<div class="setup">
+            <h1 style="font-size:24px" class="win">🎁 Unclaimed reward</h1>
+            <div class="hint">You won a level but never picked your card — choose now.</div>
+            ${picker}
+            <div class="cmbtns"><button class="btn primary" data-pickgate disabled onclick="openHome()">Continue ▶</button></div>
+          </div>`;
+          $("overlay").classList.remove("hidden");
+          return;
+        }
         const done = Object.keys(PROG.beaten).length;
         $("over").innerHTML = `<div class="setup">
-          <h1 style="font-size:30px" class="win">◆ SPARK: LANES</h1>
-          <div class="hint">Beat levels to unlock cards, grind XP to level them up,
-            and climb toward the Kraken. Progress ${done}/${LEVELS.length} levels.</div>
+          <h1 style="font-size:30px" class="win">◆ SMUDGE: PANEL BRAWL</h1>
+          <div class="hint" style="color:var(--amber);font-weight:700;margin-top:-6px">
+            starring Smudge the Sponge · a Panel Haus game</div>
+          <div class="hint">Win levels to earn card picks, grind XP to level them
+            up, and climb toward the Kraken. Progress ${done}/${LEVELS.length} levels.</div>
           <button class="btn primary" style="font-size:16px;padding:12px 22px" onclick="showCampaign()">▶ Campaign</button>
           <button class="btn" style="font-size:15px;padding:10px 20px" onclick="SFX.play('libraryOpen');showLibrary()">▤ Card Library</button>
           <button class="btn" style="font-size:15px;padding:10px 20px" onclick="showOptions()">⚙ Options</button>
@@ -2669,13 +2999,32 @@
           const click = locked
             ? `onclick="SFX.play('levelLocked')"`
             : `onclick="startLevel(${L.id})"`;
+          const micons =
+            L.mods && L.mods.length
+              ? `<span class="lvmods" title="${L.mods.map((m) => m.name + ": " + m.desc).join("&#10;")}">${L.mods.map((m) => m.icon).join("")}</span>`
+              : "";
+          // sub line: flavor until beaten, then the remaining objectives
+          const st = PROG.stars[L.id] || [];
+          const defs = STARS[L.id] || [];
+          let sub = locked ? "Locked — beat level " + L.id : L.sub;
+          if (beaten && defs.length) {
+            const todo = defs
+              .map((d, k) => (st[k] ? null : `☆ ${d.desc}`))
+              .filter(Boolean);
+            sub = todo.length ? todo.join(" · ") : "★ All objectives complete";
+          }
+          const n = starsEarned(L.id);
+          const lvstars = locked
+            ? ""
+            : `<span class="lvstars">${"★".repeat(n)}${"☆".repeat(3 - n)}</span>`;
           return `<div class="${cls}" ${click}>
             <span class="lvnum">${tag} ${L.id + 1}</span>
-            <span class="lvname">${L.name}<small>${locked ? "Locked — beat level " + L.id : L.sub}</small></span>
+            <span class="lvname">${L.name}${lvstars}<small>${sub}</small></span>
+            ${micons}
             <span class="lvdiff d-${L.difficulty.replace(" ", "")}">${L.difficulty}</span></div>`;
         }).join("");
         $("over").innerHTML = `<div class="menu">
-          <div class="menuhead"><b>Campaign</b><button class="btn newbtn" onclick="openHome()">◀ Back</button></div>
+          <div class="menuhead"><b>Campaign — ★ ${totalStars()}/${LEVELS.length * 3}</b><button class="btn newbtn" onclick="openHome()">◀ Back</button></div>
           <div class="lvlist">${rows}</div></div>`;
         $("overlay").classList.remove("hidden");
       }
@@ -2691,18 +3040,18 @@
           : `<div class="glyph">${glyph(c)}</div>`;
         if (!p)
           return `<div class="libcard rar-${c.rarity} lockedcard" data-lib="${c.id}" style="--i:${idx}">${bg}
-            <div class="lockveil"><div class="lk">🔒</div><div class="unlocklbl">Unlocks Lv ${unlockLevelOf(c.id)}</div></div></div>`;
+            <div class="lockveil"><div class="lk">🔒</div><div class="unlocklbl">Reward from Lv ${unlockLevelOf(c.id)}</div></div></div>`;
         const inDeck = dset && dset.has(c.id);
-        const a = atkAt(c, p.lvl),
-          pw = powAt(c, p.lvl);
+        const a = atkAt(c, p.lvl, p.choice),
+          pw = powAt(c, p.lvl, p.choice);
         const need = p.lvl >= LVL_CAP ? 0 : xpToNext(p.lvl);
         const bar = need
           ? `<div class="xpbar"><i style="width:${Math.min(100, (100 * p.xp) / need)}%"></i></div>`
           : `<div class="xpmax">MAX</div>`;
-        const perk = c.text ? c.text : "No ability";
+        const perk = textAt(c, p.lvl) || "No ability";
         return `<div class="libcard rar-${c.rarity} filled${inDeck ? " indeck" : ""}" data-lib="${c.id}" style="--i:${idx}">${bg}
           <div class="shine"></div>
-          <div class="cost">${c.cost}</div><div class="lvbadge">L${p.lvl}</div>
+          <div class="cost">${c.cost}</div><div class="lvbadge">L${p.lvl}${needsChoice(p) ? " ⬆" : ""}</div>
           <div class="namebar">${c.name}</div>
           <div class="reveal">
             <div class="rname">${c.name}</div>
@@ -2720,12 +3069,12 @@
           return `<div class="gcard rar-${c.rarity} lockedcard" data-lib="${c.id}" style="--i:${idx}">
             <div class="thumb">${bg}<div class="lockveil"><div class="lk">🔒</div></div></div>
             <div class="cap"><div class="caprow"><span class="cnm dim">${c.name}</span></div>
-              <div class="caprow"><span class="clk">🔒 Unlocks Lv ${unlockLevelOf(c.id)}</span></div></div></div>`;
+              <div class="caprow"><span class="clk">🔒 Lv ${unlockLevelOf(c.id)} reward</span></div></div></div>`;
         const inDeck = dset && dset.has(c.id);
         const dk = `<button class="deckbtn${inDeck ? " in" : ""}" data-deck="${c.id}"
             aria-label="${inDeck ? "Remove from deck" : "Add to deck"}">${inDeck ? "✓" : "＋"}</button>`;
-        const a = atkAt(c, p.lvl),
-          pw = powAt(c, p.lvl);
+        const a = atkAt(c, p.lvl, p.choice),
+          pw = powAt(c, p.lvl, p.choice);
         const need = p.lvl >= LVL_CAP ? 0 : xpToNext(p.lvl);
         const bar = need
           ? `<div class="capxp"><i style="width:${Math.min(100, (100 * p.xp) / need)}%"></i></div>`
@@ -2733,7 +3082,7 @@
         return `<div class="gcard rar-${c.rarity} filled${inDeck ? " indeck" : ""}" data-lib="${c.id}" style="--i:${idx}">
           <div class="thumb">${bg}<div class="shine"></div>${dk}</div>
           <div class="cap">
-            <div class="caprow"><span class="ccost">${c.cost}</span><span class="cnm">${c.name}</span><span class="clv">L${p.lvl}</span></div>
+            <div class="caprow"><span class="ccost">${c.cost}</span><span class="cnm">${c.name}</span><span class="clv">L${p.lvl}${needsChoice(p) ? " ⬆" : ""}</span></div>
             <div class="caprow"><span class="cstat atk">⚔ ${a}</span><span class="cstat pow">◆ ${pw}</span></div>
             ${bar}
           </div></div>`;
@@ -2867,8 +3216,10 @@
         const p = PROG.cards[id];
         const owned = !!p;
         const lvl = owned ? p.lvl : 1;
-        const a = atkAt(c, lvl),
-          pw = powAt(c, lvl);
+        const choice = owned ? p.choice : null;
+        const a = atkAt(c, lvl, choice),
+          pw = powAt(c, lvl, choice);
+        const txt = owned ? textAt(c, lvl) : c.text;
         const art = c.art
           ? `<div class="art" style="background-image:url('${c.art}')"></div><div class="veil"></div>`
           : `<div class="glyph">${glyph(c)}</div>`;
@@ -2883,8 +3234,15 @@
             ? `<div class="dtag">Level ${lvl} · XP ${p.xp}/${need}</div>
                <div class="xpbar big"><i style="width:${Math.min(100, (100 * p.xp) / need)}%"></i></div>`
             : `<div class="dtag" style="color:var(--amber)">MAX LEVEL</div>`;
+          if (needsChoice(p))
+            info += `<div class="choicerow" style="margin-top:6px">🔱 L3 boon — pick one:
+              <button class="btn" onclick="chooseUpgrade(${id},'attack');openLibCard(${id})">+1 ⚔</button>
+              <button class="btn" onclick="chooseUpgrade(${id},'power');openLibCard(${id})">+1 ◆</button></div>`;
+          else if (p.choice && lvl >= 3)
+            info += `<div class="dtag">L3 boon: ${p.choice === "attack" ? "+1 ⚔ Attack" : "+1 ◆ Power"}</div>`;
+          info += `<div class="dtag" style="color:var(--dim);font-size:10px">Milestones: L2 +1◆ · L3 +1⚔ or +1◆ · L4 ${c.textPlus ? "perk +1" : "+1◆"} · L5 +1⚔+1◆</div>`;
         } else {
-          info = `<div class="dtag" style="color:var(--dim)">🔒 Locked — beat Level ${unlockLevelOf(id)} to unlock</div>`;
+          info = `<div class="dtag" style="color:var(--dim)">🔒 Locked — win Level ${unlockLevelOf(id)} or later and pick it as your reward</div>`;
         }
         const inDeck = displayDeckIds().includes(id);
         const deckBtn = owned
@@ -2893,7 +3251,7 @@
           : "";
         $("cmwrap").innerHTML = `<div class="bigcard rar-${c.rarity}">${art}
             <div class="cost">${c.cost}</div>${perk}${lvbadge}
-            <div class="nm">${c.name}</div>${c.text ? `<div class="txt">${c.text}</div>` : ""}
+            <div class="nm">${c.name}</div>${txt ? `<div class="txt">${txt}</div>` : ""}
             <div class="atk">⚔ ${a}</div><div class="pow">${pw}</div></div>
           <div class="dcap">${c.rarity.toUpperCase()} · Cost ${c.cost}</div>
           ${info}
@@ -2948,72 +3306,195 @@
         if (MATCH_RESOLVED) return;
         MATCH_RESOLVED = true;
         const won = STATE.winner === "human";
-        // award XP to every card that was in your deck
-        const gain = won ? 3 : 1;
+        // EARNED XP: cards that hit the board get the full award, +1 per kill
+        // (capped at +2) and +1 for surviving to the end; benched cards only
+        // trickle +1 on a win. Servers without matchStats fall back to the
+        // old flat award so a stale token still resolves.
+        const ms = STATE.matchStats;
+        const played = ms ? new Set(ms.played) : null;
+        const survived = ms ? new Set(ms.survived) : null;
         const levelUps = [];
+        const pending = []; // cards that just hit L3 and owe a boon pick
         LAST.deck.forEach((d) => {
           const p = PROG.cards[d.id];
           if (!p) return;
+          let gain;
+          if (!ms) gain = won ? 3 : 1;
+          else if (played.has(d.id))
+            gain =
+              (won ? 3 : 1) +
+              Math.min(2, (ms.kills && ms.kills[d.id]) || 0) +
+              (survived.has(d.id) ? 1 : 0);
+          else gain = won ? 1 : 0;
           p.xp += gain;
           while (p.lvl < LVL_CAP && p.xp >= xpToNext(p.lvl)) {
             p.xp -= xpToNext(p.lvl);
             p.lvl++;
             levelUps.push({ id: d.id, lvl: p.lvl });
+            if (p.lvl === 3 && !p.choice) pending.push(d.id);
           }
         });
-        // unlock next level + its cards on a win
-        const unlocked = [];
+        // a win banks the next level, offers a pick-1-of-3 card reward, and
+        // checks this level's star objectives (each new star = a bonus pick)
+        let starResults = [];
         if (won) {
           PROG.beaten[LAST.level] = true;
           if (LAST.level + 1 < LEVELS.length)
             PROG.unlocked = Math.max(PROG.unlocked, LAST.level + 1);
-          unlocksForLevel(LAST.level).forEach((c) => {
-            if (!PROG.cards[c.id]) {
-              PROG.cards[c.id] = { xp: 0, lvl: 1 };
-              unlocked.push(c);
-            }
-          });
+          PROG.pendingPicks.push({ level: LAST.level, offers: null });
+          if (ms) {
+            const ctx = starCtx();
+            starResults = (STARS[LAST.level] || []).map((def, k) => {
+              const had = !!(PROG.stars[LAST.level] || [])[k];
+              const got = !had && !!def.check(ctx);
+              if (got) {
+                PROG.stars[LAST.level] = PROG.stars[LAST.level] || [
+                  false,
+                  false,
+                ];
+                PROG.stars[LAST.level][k] = true;
+                PROG.pendingPicks.push({ level: LAST.level, offers: null });
+              }
+              return { desc: def.desc, had, got };
+            });
+          }
         }
         saveProg();
-        showResult(won, levelUps, unlocked);
+        showResult(won, levelUps, pending, starResults);
+      }
+      // ---- pick-1-of-3 unlock rewards (a queue: win pick + star bonuses) ----
+      function pickerHTML() {
+        const q = PROG.pendingPicks || [];
+        while (q.length) {
+          const pp = q[0];
+          if (!Array.isArray(pp.offers)) {
+            // offers are drawn when first shown, so back-to-back picks in
+            // the queue never offer a card an earlier pick already granted
+            pp.offers = offersFor(pp.level);
+            saveProg();
+          }
+          const offers = pp.offers
+            .map(byId)
+            .filter((c) => c && !PROG.cards[c.id]);
+          if (!offers.length) {
+            q.shift(); // stale: bad ids, already owned, or pool exhausted
+            saveProg();
+            continue;
+          }
+          const tiles = offers
+            .map(
+              (
+                c,
+              ) => `<div class="hcard rar-${c.rarity}" onclick="pickUnlock(${c.id})">${artOrGlyph(c)}<div class="cost">${c.cost}</div>
+                ${c.text ? `<div class="perk">${glyph(c)}</div>` : ""}<div class="nm">${c.name}</div>
+                ${c.text ? `<div class="txt">${c.text}</div>` : ""}<div class="atk">${c.attack}</div><div class="pow">${c.power}</div></div>`,
+            )
+            .join("");
+          const more =
+            q.length > 1
+              ? ` <small>(+${q.length - 1} more waiting)</small>`
+              : "";
+          return `<div id="pickwrap" class="pickwrap">
+            <div class="reward win">★ Reward — tap ONE card to keep:${more}</div>
+            <div class="pickrow">${tiles}</div></div>`;
+        }
+        return "";
+      }
+      function pickUnlock(id) {
+        const q = PROG.pendingPicks || [];
+        const pp = q[0];
+        if (!pp || !(pp.offers || []).includes(id) || PROG.cards[id]) return;
+        PROG.cards[id] = { xp: 0, lvl: 1, choice: null };
+        q.shift();
+        saveProg();
+        SFX.play("cardUnlock");
+        const w = $("pickwrap");
+        const next = pickerHTML(); // next queued reward, if any
+        if (w) {
+          if (next) w.outerHTML = next;
+          else
+            w.innerHTML = `<div class="reward win">★ Unlocked: ${byId(id).name} — the rest return to the reward pool.</div>`;
+        }
+        if (!next)
+          document
+            .querySelectorAll("[data-pickgate]")
+            .forEach((b) => (b.disabled = false));
+      }
+      // Permanent L3 boon: +1 Attack or +1 Power, picked once per card.
+      function chooseUpgrade(id, ch, btn) {
+        const p = PROG.cards[id];
+        if (!p || p.choice) return;
+        p.choice = ch;
+        saveProg();
+        SFX.play("cardLevelUp");
+        const row = btn && btn.closest(".choicerow");
+        if (row)
+          row.innerHTML = `⬆ ${byId(id).name}: ${ch === "attack" ? "+1 ⚔ Attack" : "+1 ◆ Power"} locked in`;
       }
 
-      function showResult(won, levelUps, unlocked) {
+      function showResult(won, levelUps, pending, starResults) {
         const s = STATE;
         const t = won
           ? ["VICTORY", "win"]
           : s.winner === "bot"
             ? ["DEFEAT", "lose"]
             : ["DRAW", "win"];
+        const xphint = s.matchStats
+          ? `XP — played +${won ? 3 : 1} · kill +1 · survived +1 · benched +${won ? 1 : 0}`
+          : `+${won ? 3 : 1} XP to each card you played.`;
         const ups = levelUps.length
           ? `<div class="reward">⬆ ${levelUps.map((u) => byId(u.id).name + " → L" + u.lvl).join(", ")}</div>`
           : "";
-        const unl = unlocked.length
-          ? `<div class="reward win">★ Unlocked: ${unlocked.map((c) => c.name).join(", ")}</div>`
-          : "";
+        const picks = (pending || [])
+          .map(
+            (
+              id,
+            ) => `<div class="reward choicerow">🔱 ${byId(id).name} hit L3 — pick a boon:
+              <button class="btn" onclick="chooseUpgrade(${id},'attack',this)">+1 ⚔</button>
+              <button class="btn" onclick="chooseUpgrade(${id},'power',this)">+1 ◆</button></div>`,
+          )
+          .join("");
+        // star objectives: ★ new, ★ already earned (dim), ☆ missed
+        const newStars = (starResults || []).filter((r) => r.got).length;
+        const stars = (starResults || [])
+          .map((r) =>
+            r.got
+              ? `<div class="objrow got">★ ${r.desc} — <b>NEW!</b> bonus pick earned</div>`
+              : r.had
+                ? `<div class="objrow had">★ ${r.desc}</div>`
+                : `<div class="objrow">☆ ${r.desc}</div>`,
+          )
+          .join("");
+        // the 1-of-3 reward gates the nav buttons until a card is claimed
+        const picker = pickerHTML();
+        const gate = picker ? "data-pickgate disabled" : "";
         const nextLv = LAST.level + 1;
         const canNext = won && nextLv < LEVELS.length;
         const btns =
           (canNext
-            ? `<button class="btn primary" onclick="startLevel(${nextLv})">Next ▶</button>`
-            : `<button class="btn primary" onclick="startLevel(${LAST.level})">${won ? "Play Again" : "Retry"}</button>`) +
-          `<button class="btn" onclick="showCampaign()">Levels</button>`;
+            ? `<button class="btn primary" ${gate} onclick="startLevel(${nextLv})">Next ▶</button>`
+            : `<button class="btn primary" ${gate} onclick="startLevel(${LAST.level})">${won ? "Play Again" : "Retry"}</button>`) +
+          `<button class="btn" ${gate} onclick="showCampaign()">Levels</button>`;
         $("over").innerHTML = `<h1 class="${t[1]}">${t[0]}</h1>
           <div style="font-size:26px;font-weight:800">${s.score.you} – ${s.score.foe}</div>
-          <div class="hint">+${won ? 3 : 1} XP to each card you played.</div>
-          ${ups}${unl}
+          <div class="hint">${xphint}</div>
+          ${ups}${picks}${stars}${picker}
           <div class="cmbtns">${btns}</div>`;
         $("overlay").classList.remove("hidden");
-        // reward jingle: XP tally → level-ups → unlocks → saved confirmation
+        // reward jingle: XP tally → level-ups → new stars → reward offer → saved
         SFX.play("xpGain");
         let dly = 550;
         if (levelUps.length) {
           setTimeout(() => SFX.play("cardLevelUp"), dly);
           dly += 600;
         }
-        if (unlocked.length) {
-          setTimeout(() => SFX.play("cardUnlock"), dly);
-          dly += 750;
+        if (newStars) {
+          setTimeout(() => SFX.play("levelSelect"), dly);
+          dly += 500;
+        }
+        if (picker) {
+          setTimeout(() => SFX.play("cardModalOpen"), dly);
+          dly += 500;
         }
         setTimeout(() => SFX.play("progressSaved"), dly);
       }

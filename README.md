@@ -25,15 +25,20 @@ python run.py sim 3000       # full balance run: 27,000 games (3000 per pairing)
 python run.py demo aggro control   # watch one logged game, turn by turn
 python run.py play           # PLAY the combat game in the terminal
 python run.py play aggro control   # you = aggro, bot = control
-python run.py gui            # PLAY *SPARK: LANES* in a browser (http://127.0.0.1:8000)
+python run.py gui            # PLAY *SMUDGE: PANEL BRAWL* in a browser (http://127.0.0.1:8000)
 python run.py gui-combat    # play the original combat game in a browser
 python run.py gui 8080      # ...on a custom port
 ```
 
-## SPARK: LANES (`python run.py gui`)
+## SMUDGE: PANEL BRAWL (`python run.py gui`)
 
-A second game built on the same pool/formula: a **lane battler** (Marvel
-Snap-like). Files: `spark/lanes.py` (engine + card set with perks + bot),
+**Starring Smudge the Sponge · a Panel Haus game.** The flagship attention
+funnel for the Panel Haus comic-creation studio: a **panel battler** (Marvel
+Snap-like) where the three battle columns are styled as **comic panels** and
+the roster is the studio's Smudgies mascot cast. Formerly _SPARK: LANES_ —
+code, files, and API fields still say `lane` (renaming them would break
+nothing but churn everything; only player-facing copy is branded). Files:
+`spark/lanes.py` (engine + card set with perks + bot),
 `spark/lane_server.py`, `spark/web/lanes.html`.
 
 - **3 lanes**, **3 cards per side per lane** stacked into clean vertical
@@ -65,15 +70,43 @@ Snap-like). Files: `spark/lanes.py` (engine + card set with perks + bot),
   unlock in order (beat one → unlock the next). Difficulty scales via bot skill
   (0→3, combat-aware at the top), opponent deck bias (random→legendary), and
   boss handicaps (+energy / +cards). A **Card Library** tracks every card's
-  owned/locked state; you start with commons+rares and **unlock epics/legendaries
-  by clearing levels**. The Library doubles as a **deck builder**: tap ＋/✓ on
+  owned/locked state; you start with commons+rares and earn the rest as
+  **pick-1-of-3 rewards**: every campaign win offers three locked cards from
+  that level's reward tier (weakest tiers unlock first; earlier tiers' passed-over
+  cards can reappear), and you keep exactly one — the other two return to the
+  pool for future wins, so replaying levels both grinds XP **and** fills out
+  the collection. Unclaimed picks survive a page close and must be claimed
+  from the home screen before the next match. Every level also carries
+  **3 stars**: one for winning plus **two optional objectives** themed to the
+  level ("win without losing a card", "lead every modifier lane", "8+ cards
+  costing ≤3 in your deck", …). Objectives are shown on beaten levels'
+  campaign rows, evaluated on victory, and each **first-time star queues one
+  bonus card pick** — the campaign header tracks ★ n/30. The Library doubles
+  as a **deck builder**: tap ＋/✓ on
   an owned card (or use its popup) to hand-pick your 16 — ✨ Auto-fill restores
   the strongest-16 auto pick, and a half-finished deck never enters a match
-  (auto plays until yours is complete). The deck is saved with your progress. Every card earns **XP** each match (more on a win) and
-  **levels up** (+1 Power/level, +1 Attack/2 levels, cap L5) — grinding earlier
-  levels powers up your deck to clear later ones. Progress is saved in the
-  browser (`localStorage`); the server applies each card's level to its stats.
+  (auto plays until yours is complete). The deck is saved with your progress.
+  Progress is saved in the browser (`localStorage`); the server applies each
+  card's level to its stats.
   Endpoints: `/api/levels`, `/api/pool`, and `/api/new {level, deck}`.
+- **Arena modifiers (lane rules):** each level carries a themed pool of named
+  lane rules (`MODS` in `lanes.py`) and draws 0–3 of them onto random lanes at
+  match start — **🌋 Volcanic** (cards take 1 damage after each round's
+  combat), **🕊️ Sanctum** (no combat — a pure Power race), **🌀 Tailwind**
+  (cards cost 1 less there, min 1), **🏆 Golden** (leading banks 2 points),
+  **🚫 Dead Zone** (On Reveal perks don't fire), **🌿 Overgrown** (+1 Power to
+  cards there). Rules apply to **both sides**; the smart bot weighs them. Lanes
+  show a tappable chip, the campaign list previews each level's possible rules,
+  and the same deck faces a different board puzzle every run.
+- **Earned XP + milestone levels:** XP now follows performance — cards you
+  actually **played** get the full award (**+3 win / +1 loss**), **+1 per
+  kill** (max +2) and **+1 for surviving** the match; benched deck cards only
+  trickle +1 on a win (the server reports `matchStats` per match). Leveling is
+  a set of **milestones** instead of a flat stat drip: **L2** +1 Power, **L3**
+  your **choice** of +1 Attack or +1 Power (picked on the result screen or in
+  the Library — ⬆ marks an unspent boon), **L4** the card's **perk amount +1**
+  (perkless cards get +1 Power), **L5** +1 Attack **and** +1 Power. Ability
+  cards now scale their abilities, not just their bodies.
 - **Mobile-first UI:** a narrow single-column layout (max-width 480px) with thin,
   card-focused lanes. **2 slots per side per lane**; each card **fills the lane
   width** and is locked to the **2:3 aspect ratio of the art**. The hand is a
@@ -92,9 +125,9 @@ an enemy unit or their 🎯 face to attack. Guard, Barrier, lethal, Spark costs,
 and summoning sickness are all enforced server-side by the same engine the sim
 uses. Spark shows as amber pips; the battle log narrates the bot's moves.
 
-### Deploy SPARK: LANES to Vercel
+### Deploy SMUDGE: PANEL BRAWL to Vercel
 
-The lane game also runs on Vercel with no code changes to the engine. Because
+The panel game also runs on Vercel with no code changes to the engine. Because
 Vercel functions are **stateless** (no long-lived process), the game is served
 two ways:
 

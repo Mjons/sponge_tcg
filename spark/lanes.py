@@ -1,21 +1,31 @@
-"""SPARK: LANES — a lane-battler (Marvel Snap-like) built on the same
-minimal/balanced principles as the combat game.
+"""SMUDGE: PANEL BRAWL — a panel-battler (Marvel Snap-like) built on the
+same minimal/balanced principles as the combat game.
+
+Starring Smudge the Sponge — a Panel Haus game (the three battle columns
+are styled as comic PANELS; code and the API still say "lane" throughout).
+Formerly SPARK: LANES.
 
 RULES (fits on a card):
-  - 3 lanes (columns). Each side has up to 4 slots per lane.
-  - 6 turns. On turn T you have T Energy (does not carry over).
-  - Each turn: place cards from hand into your lane slots (pay Energy),
-    then reveal. Cards have a Power and an optional PERK that affects
-    other cards (On Reveal = one-shot; Ongoing = while in play).
-  - Reveal is simultaneous & hidden: the bot commits to the pre-turn
-    board without seeing your staged cards, then both flip.
-  - After turn 6, you WIN a lane if your total Power there beats the
-    opponent's. Win 2 of 3 lanes to win the match (ties broken by total
-    Power across all lanes).
+  - 3 panels (columns). Each side has 2 slots per panel.
+  - 9 rounds. On round T you have T Energy (does not carry over).
+  - Each round: place cards from hand into your panel slots (pay Energy),
+    then reveal. Cards have Attack, Power (health AND score) and an
+    optional PERK (On Reveal = one-shot; Ongoing = while in play).
+  - Reveal is simultaneous & hidden: the bot commits to the pre-round
+    board without seeing your staged cards, then both flip. Opposing
+    cards in the same slot then trade damage; 0 Power = death.
+  - Scoring: after combat you bank a point for every panel you lead
+    (Golden panels pay 2). Most points after round 9 wins (ties broken
+    by total Power).
 
 BALANCE: power follows the same budget as the combat game,
     Power budget = 2*Cost + 1,  minus the perk's cost in power points.
 Perk costs are tuned, not proven — flagged for playtesting.
+
+ARENA MODIFIERS: campaign levels draw named lane rules (see MODS) onto
+random lanes at match start — Volcanic burns, Sanctum bans combat, Tailwind
+discounts, Golden doubles points, Dead Zone silences On Reveal, Overgrown
+buffs. They apply to both sides; the deck faces a fresh puzzle each run.
 """
 
 import random
@@ -302,18 +312,48 @@ def build_deck(pool, rng, bias=0):
 # --------------------------------------------------------------------------
 # Campaign: levels unlock in order; difficulty scales via bot skill, the
 # opponent's deck bias, and (for bosses) energy / opening-card handicaps.
+# Each level also carries arena MODIFIERS: named lane rules drawn at match
+# start and pinned to random lanes, so the same deck faces a different
+# board puzzle every run. Modifiers apply to BOTH sides equally.
 # --------------------------------------------------------------------------
+MODS = {
+    "volcanic":  dict(name="Volcanic",  icon="🌋",
+                      desc="Cards here take 1 damage after each round's combat."),
+    "sanctum":   dict(name="Sanctum",   icon="🕊️",
+                      desc="No combat here — a pure Power race."),
+    "tailwind":  dict(name="Tailwind",  icon="🌀",
+                      desc="Cards cost 1 less Energy to play here (min 1)."),
+    "golden":    dict(name="Golden",    icon="🏆",
+                      desc="Leading this panel banks 2 points instead of 1."),
+    "deadzone":  dict(name="Dead Zone", icon="🚫",
+                      desc="On Reveal abilities don't trigger here."),
+    "overgrown": dict(name="Overgrown", icon="🌿",
+                      desc="Cards here have +1 Power while in this panel."),
+}
+
+# mods = this level's themed pool of possible lane rules; nmods = how many
+# are drawn (each to a distinct random lane) when a match starts.
 LEVELS = [
-    dict(name="Tide Pool Tutorial", sub="A gentle warm-up.",     skill=0, bias=0, energy=0, opening=0),
-    dict(name="Back-Alley Brawl",   sub="Street scrappers.",      skill=1, bias=0, energy=0, opening=0),
-    dict(name="The Duelist's Court", sub="Sharper blades.",       skill=1, bias=1, energy=0, opening=0),
-    dict(name="Steampunk Foundry",  sub="Clockwork tactics.",     skill=2, bias=1, energy=0, opening=0),
-    dict(name="Neon Underground",   sub="They read your moves.",  skill=2, bias=2, energy=0, opening=0),
-    dict(name="Jungle Gauntlet",    sub="Apex predators.",        skill=2, bias=2, energy=0, opening=1),
-    dict(name="Pirate Armada",      sub="Outgunned.",             skill=3, bias=2, energy=0, opening=0),
-    dict(name="The Ink Court",      sub="Masters of the board.",  skill=3, bias=2, energy=0, opening=1),
-    dict(name="Ember Throne",       sub="A blazing gauntlet.",    skill=3, bias=2, energy=0, opening=1),
-    dict(name="Kraken's Abyss",     sub="The final boss.",        skill=3, bias=2, energy=0, opening=2),
+    dict(name="Tide Pool Tutorial", sub="A gentle warm-up.",     skill=0, bias=0, energy=0, opening=0,
+         mods=(), nmods=0),
+    dict(name="Back-Alley Brawl",   sub="Street scrappers.",      skill=1, bias=0, energy=0, opening=0,
+         mods=("tailwind",), nmods=1),
+    dict(name="The Duelist's Court", sub="Sharper blades.",       skill=1, bias=1, energy=0, opening=0,
+         mods=("sanctum", "tailwind"), nmods=1),
+    dict(name="Steampunk Foundry",  sub="Clockwork tactics.",     skill=2, bias=1, energy=0, opening=0,
+         mods=("volcanic", "tailwind"), nmods=1),
+    dict(name="Neon Underground",   sub="They read your moves.",  skill=2, bias=2, energy=0, opening=0,
+         mods=("deadzone", "tailwind", "golden"), nmods=1),
+    dict(name="Jungle Gauntlet",    sub="Apex predators.",        skill=2, bias=2, energy=0, opening=1,
+         mods=("overgrown", "sanctum", "volcanic"), nmods=2),
+    dict(name="Pirate Armada",      sub="Outgunned.",             skill=3, bias=2, energy=0, opening=0,
+         mods=("golden", "volcanic", "tailwind"), nmods=2),
+    dict(name="The Ink Court",      sub="Masters of the board.",  skill=3, bias=2, energy=0, opening=1,
+         mods=("deadzone", "sanctum", "golden"), nmods=2),
+    dict(name="Ember Throne",       sub="A blazing gauntlet.",    skill=3, bias=2, energy=0, opening=1,
+         mods=("volcanic", "golden", "deadzone"), nmods=2),
+    dict(name="Kraken's Abyss",     sub="The final boss.",        skill=3, bias=2, energy=0, opening=2,
+         mods=("sanctum", "volcanic", "deadzone", "golden", "overgrown"), nmods=3),
 ]
 
 
@@ -332,33 +372,64 @@ def _difficulty_label(cfg):
 
 def levels_meta():
     return [{"id": i, "name": L["name"], "sub": L["sub"],
-             "difficulty": _difficulty_label(L)} for i, L in enumerate(LEVELS)]
+             "difficulty": _difficulty_label(L),
+             "mods": [{"key": k, **MODS[k]} for k in L["mods"]]}
+            for i, L in enumerate(LEVELS)]
 
 
 # --------------------------------------------------------------------------
-# Card leveling (the grind): +1 Power per level, +1 Attack every 2 levels.
+# Card leveling (the grind). Milestones instead of a flat stat treadmill:
+#   L2: +1 Power
+#   L3: +1 Attack OR +1 Power — the player's choice (defaults to Power)
+#   L4: perk amount +1 (cards with no perk get +1 Power instead)
+#   L5: +1 Attack and +1 Power
 # --------------------------------------------------------------------------
 LEVEL_CAP = 5
 
 
-def level_bonus(level):
+def level_bonus(level, choice=None, has_perk=False):
     level = max(1, min(LEVEL_CAP, int(level)))
-    return {"attack": (level - 1) // 2, "power": (level - 1)}
+    atk = pw = perk = 0
+    if level >= 2:
+        pw += 1
+    if level >= 3:
+        if choice == "attack":
+            atk += 1
+        else:
+            pw += 1
+    if level >= 4:
+        if has_perk:
+            perk += 1
+        else:
+            pw += 1
+    if level >= 5:
+        atk += 1
+        pw += 1
+    return {"attack": atk, "power": pw, "perk": perk}
 
 
-def card_at_level(card, level):
+def card_at_level(card, level, choice=None):
     from dataclasses import replace
-    b = level_bonus(level)
-    if not b["attack"] and not b["power"]:
+    has_perk = bool(card.ability and "amount" in card.ability)
+    b = level_bonus(level, choice, has_perk)
+    if not b["attack"] and not b["power"] and not b["perk"]:
         return card
+    ability = card.ability
+    if b["perk"] and ability:
+        ability = {**ability, "amount": ability["amount"] + b["perk"]}
     return replace(card, attack=card.attack + b["attack"],
-                   power=card.power + b["power"])
+                   power=card.power + b["power"], ability=ability)
 
 
 def pool_meta():
-    """All cards (base stats) for the library / client deck-builder."""
+    """All cards (base stats) for the library / client deck-builder.
+
+    textPlus is the perk text at the L4 milestone (amount +1) so the client
+    can show leveled ability text without re-implementing _text."""
     return [{"id": c.id, "name": c.name, "cost": c.cost, "attack": c.attack,
-             "power": c.power, "text": c.text, "rarity": c.rarity, "art": c.art}
+             "power": c.power, "text": c.text, "rarity": c.rarity, "art": c.art,
+             "textPlus": (_text({**c.ability, "amount": c.ability["amount"] + 1})
+                          if c.ability else None)}
             for c in build_pool()]
 
 
@@ -393,6 +464,14 @@ class LaneGame:
         self.level = 0
         self.bot_skill = 1
         self.bot_energy_bonus = 0
+        self.lane_mods = [None] * LANES    # arena modifier key (or None) per lane
+        self._played = set()               # your card ids that hit the board
+        self._kills = {}                   # your card id -> enemy cards it felled
+        self._survived = []                # your card ids alive at match end
+        self._deaths = 0                   # your cards lost (any cause)
+        self._sweeps = 0                   # rounds you led all three lanes
+        self._legacy_stats = False         # token predates stat tracking: the
+                                           # counts are incomplete, don't report
 
     # -- setup --------------------------------------------------------------
     def new_game(self, level=0, deck=None):
@@ -400,6 +479,13 @@ class LaneGame:
         self.level = level if 0 <= level < len(LEVELS) else 0
         self.bot_skill = cfg["skill"]
         self.bot_energy_bonus = cfg["energy"]
+        self.lane_mods = self._draw_mods(cfg)
+        self._played = set()
+        self._kills = {}
+        self._survived = []
+        self._deaths = 0
+        self._sweeps = 0
+        self._legacy_stats = False
         pool = build_pool()
         # your deck: leveled cards from your collection (if provided), else random
         player = self._build_player_deck(pool, deck)
@@ -413,7 +499,12 @@ class LaneGame:
         self._uid = 0
         self.points = {0: 0, 1: 0}
         self.log = [f"Level {level + 1}: {cfg['name']} — {MAX_TURNS} rounds. "
-                    f"Lead a lane each round to score. Most points wins!"]
+                    f"Lead a panel each round to score. Most points wins!"]
+        for li, key in enumerate(self.lane_mods):
+            if key:
+                m = MODS[key]
+                self.log.append(f"Panel {li + 1} is {m['name']} {m['icon']} — "
+                                f"{m['desc']}")
         self.winner = None
         self.over = False
         self._draw(0, OPENING_DRAW)
@@ -421,8 +512,25 @@ class LaneGame:
         self._start_turn()
         return self.state()
 
+    def _draw_mods(self, cfg):
+        """Draw this level's arena modifiers onto distinct random lanes."""
+        mods = [None] * LANES
+        keys = [k for k in cfg.get("mods", ()) if k in MODS]
+        n = min(cfg.get("nmods", 0), len(keys), LANES)
+        if n:
+            for key, li in zip(self.rng.sample(keys, n),
+                               self.rng.sample(range(LANES), n)):
+                mods[li] = key
+        return mods
+
+    def play_cost(self, card, lane):
+        """Energy to place `card` in `lane` (Tailwind discounts by 1, min 1)."""
+        if self.lane_mods[lane] == "tailwind":
+            return max(1, card.cost - 1)
+        return card.cost
+
     def _build_player_deck(self, pool, spec):
-        """spec = [{id, level}, ...] from the player's collection; leveled up.
+        """spec = [{id, level, choice}, ...] from the player's collection.
 
         The collection owns each card once, so duplicate ids in the spec are
         dropped (a hand-crafted request can't run 16 copies of a legendary).
@@ -439,7 +547,10 @@ class LaneGame:
             if c is None or cid in seen:
                 continue
             seen.add(cid)
-            deck.append(card_at_level(c, entry.get("level", 1)))
+            choice = entry.get("choice")
+            if choice not in ("attack", "power"):
+                choice = None
+            deck.append(card_at_level(c, entry.get("level", 1), choice))
         if len(deck) < 8:                       # safety: pad a too-small deck
             deck += build_deck(pool, self.rng, bias=0)
         return deck[:DECK_SIZE]
@@ -469,12 +580,13 @@ class LaneGame:
         decision code must use this, or it peeks at your hidden picks.
         """
         lane = self.lanes[li]
+        grow = 1 if self.lane_mods[li] == "overgrown" else 0
         out = {}
         for owner in (0, 1):
             cards = lane[owner]
             if bot_view and owner == 0:
                 cards = [c for c in cards if c.revealed]
-            eff = [c.card.power + c.bonus for c in cards]
+            eff = [c.card.power + c.bonus + grow for c in cards]
             for i, src in enumerate(cards):
                 ab = src.card.ability
                 if not ab or ab.get("trigger") != "ongoing" or not src.revealed:
@@ -508,18 +620,19 @@ class LaneGame:
         if self.over:
             return self._err("The match is over.")
         if not (0 <= lane < LANES):
-            return self._err("No such lane.")
+            return self._err("No such panel.")
         if not isinstance(hand_index, int) or not (0 <= hand_index < len(self.hands[0])):
             return self._err("No such card.")
         card = self.hands[0][hand_index]
-        if card.cost > self.energy:
-            return self._err(f"Not enough Energy ({card.cost} needed, {self.energy} left).")
+        cost = self.play_cost(card, lane)
+        if cost > self.energy:
+            return self._err(f"Not enough Energy ({cost} needed, {self.energy} left).")
         if not self._space(0, lane):
-            return self._err("That lane is full on your side (4).")
+            return self._err(f"That panel is full on your side ({SLOTS_PER_LANE}).")
         self.hands[0].pop(hand_index)
-        self.energy -= card.cost
+        self.energy -= cost
         self._place(0, card, lane)
-        self.message = f"Staged {card.name} in Lane {lane + 1}."
+        self.message = f"Staged {card.name} in Panel {lane + 1}."
         return self.state()
 
     def reset_turn(self):
@@ -527,7 +640,7 @@ class LaneGame:
         for pc, li in reversed(self.staged[0]):
             self.lanes[li][0].remove(pc)
             self.hands[0].append(pc.card)
-            self.energy += pc.card.cost
+            self.energy += self.play_cost(pc.card, li)   # refund what was paid
         self.staged[0] = []
         self.message = "Cleared your staged cards."
         return self.state()
@@ -537,48 +650,35 @@ class LaneGame:
         energy = self.turn + self.bot_energy_bonus
         skill = self.bot_skill
         while True:
-            aff = [c for c in self.hands[1] if c.cost <= energy]
-            if not aff:
-                break
-            if skill <= 1:
-                # simple: strongest card into the lane it's most behind in
-                aff.sort(key=lambda c: -c.power)
-                choice = None
-                for card in aff:
-                    lane = self._bot_choose_lane(card, skill)
-                    if lane is not None:
-                        choice = (card, lane)
-                        break
-            else:
-                # evaluate every (card, lane) and take the best marginal play
-                choice, best = None, -1e9
-                for card in aff:
-                    for li in range(LANES):
-                        if not self._space(1, li):
-                            continue
-                        v = self._placement_value(card, li, skill)
-                        if v > best:
-                            best, choice = v, (card, li)
+            # evaluate every affordable (card, lane) — costs vary per lane
+            # under Tailwind, so affordability is a property of the pair
+            choice, best = None, None
+            for card in self.hands[1]:
+                for li in range(LANES):
+                    if not self._space(1, li):
+                        continue
+                    if self.play_cost(card, li) > energy:
+                        continue
+                    v = (self._placement_value(card, li, skill) if skill >= 2
+                         else self._simple_value(card, li, skill))
+                    if best is None or v > best:
+                        best, choice = v, (card, li)
             if not choice:
                 break
             card, lane = choice
             self.hands[1].remove(card)
-            energy -= card.cost
+            energy -= self.play_cost(card, lane)
             self._place(1, card, lane)
 
-    def _bot_choose_lane(self, card, skill=1):
-        """Low-skill: contest the lane the bot is most behind in that has room."""
-        best, best_score = None, None
-        for li in range(LANES):
-            if not self._space(1, li):
-                continue
+    def _simple_value(self, card, li, skill):
+        """Low-skill: strongest card first, into the lane it's most behind in
+        (skill 0 just fills the emptiest lane)."""
+        if skill == 0:
+            lane_score = -len(self.lanes[li][1])
+        else:
             h, b = self._lane_totals(li, bot_view=True)
-            score = (h - b) + card.power * 0.1 - len(self.lanes[li][1]) * 0.5
-            if skill == 0:
-                score = -len(self.lanes[li][1])   # naive: just fill emptiest lane
-            if best_score is None or score > best_score:
-                best, best_score = li, score
-        return best
+            lane_score = (h - b) + card.power * 0.1 - len(self.lanes[li][1]) * 0.5
+        return card.power * 100 + lane_score
 
     def _placement_value(self, card, li, skill):
         """Higher-skill heuristic: flip/secure lanes, don't waste on lost ones,
@@ -599,6 +699,17 @@ class LaneGame:
             if card.attack >= weakest:
                 val += 3 + card.attack * 0.4  # can kill an enemy scorer
         val -= len(self.lanes[li][1]) * 0.4   # slight spread preference
+        mod = self.lane_mods[li]
+        if mod == "golden":
+            val += 2.5                        # double points: worth contesting
+        elif mod == "volcanic" and card.power <= 2:
+            val -= 3                          # burns out in a couple of rounds
+        elif mod == "sanctum":
+            val -= card.attack * 0.3          # attack is wasted here
+        elif mod == "deadzone" and (card.ability or {}).get("trigger") == "reveal":
+            val -= 2                          # the perk won't fire
+        elif mod == "tailwind" and card.cost > 1:
+            val += 0.8                        # discount stretches the turn's energy
         return val
 
     # -- reveal (produces an animation timeline) ----------------------------
@@ -611,11 +722,12 @@ class LaneGame:
         """
         powers, lanes = {}, []
         for li in range(LANES):
+            grow = 1 if self.lane_mods[li] == "overgrown" else 0
             tot = {0: 0, 1: 0}
             for owner in (0, 1):
                 cards = (self.lanes[li][0] if owner == 0
                          else [c for c in self.lanes[li][1] if c.revealed])
-                eff = [c.card.power + c.bonus for c in cards]
+                eff = [c.card.power + c.bonus + grow for c in cards]
                 for i, src in enumerate(cards):
                     ab = src.card.ability
                     if not ab or ab.get("trigger") != "ongoing":
@@ -643,6 +755,8 @@ class LaneGame:
         ab = pc.card.ability
         if not ab:
             return []
+        if ab["trigger"] == "reveal" and self.lane_mods[li] == "deadzone":
+            return []                       # Dead Zone: On Reveal perks fizzle
         owner, t, amt = pc.owner, ab["type"], ab["amount"]
         lane = self.lanes[li]
         hits = []
@@ -688,31 +802,53 @@ class LaneGame:
             "art": pc.card.art, "text": pc.card.text, "rarity": pc.card.rarity,
         }
 
-    @staticmethod
-    def _alive(pc):
-        return pc.card.power + pc.bonus > 0     # intrinsic health (ignores auras)
-
     def _combat_events(self):
-        """Opposing cards in the same slot trade damage each round; 0 => death."""
+        """Opposing cards in the same slot trade damage each round; 0 => death.
+        Sanctum lanes skip combat; Volcanic lanes burn the survivors after."""
         events = []
         for li in range(LANES):
+            mod = self.lane_mods[li]
+            grow = 1 if mod == "overgrown" else 0
+
+            def alive(pc):
+                # Overgrown's +1 counts as health too: power doubles as HP,
+                # so a card the UI shows at 1 must not die at intrinsic 0.
+                return pc.card.power + pc.bonus + grow > 0
+
             you, foe = self.lanes[li][0], self.lanes[li][1]
-            for i in range(max(len(you), len(foe))):
-                a = you[i] if i < len(you) else None
-                b = foe[i] if i < len(foe) else None
-                if a and b:                       # a duel: simultaneous strike
-                    a.bonus -= b.card.attack
-                    b.bonus -= a.card.attack
-                    events.append({"kind": "attack", "lane": li, "hits": [
-                        {"uid": a.uid, "delta": -b.card.attack},
-                        {"uid": b.uid, "delta": -a.card.attack}]})
+            if mod != "sanctum":
+                for i in range(max(len(you), len(foe))):
+                    a = you[i] if i < len(you) else None
+                    b = foe[i] if i < len(foe) else None
+                    if a and b:                   # a duel: simultaneous strike
+                        was_alive = alive(b)      # corpses (perk kills waiting
+                        a.bonus -= b.card.attack  # for the sweep) credit no one
+                        b.bonus -= a.card.attack
+                        if was_alive and not alive(b):
+                            self._kills[a.card.id] = \
+                                self._kills.get(a.card.id, 0) + 1
+                        events.append({"kind": "attack", "lane": li, "hits": [
+                            {"uid": a.uid, "delta": -b.card.attack},
+                            {"uid": b.uid, "delta": -a.card.attack}]})
+                        events.append({"kind": "snapshot", **self._snapshot()})
+            if mod == "volcanic":
+                hits = []
+                for c in you + foe:
+                    if not alive(c):
+                        continue                  # the dead don't burn again
+                    c.bonus -= 1
+                    hits.append({"uid": c.uid, "delta": -1})
+                if hits:
+                    events.append({"kind": "mod", "mod": "volcanic", "lane": li,
+                                   "hits": hits})
                     events.append({"kind": "snapshot", **self._snapshot()})
-            dead = [c for side in (you, foe) for c in side if not self._alive(c)]
+            dead = [c for side in (you, foe) for c in side if not alive(c)]
             if dead:
+                self._deaths += sum(1 for c in you if not alive(c))
                 for c in dead:
                     events.append({"kind": "death", "uid": c.uid})
-                self.lanes[li][0] = [c for c in you if self._alive(c)]
-                self.lanes[li][1] = [c for c in foe if self._alive(c)]
+                self.lanes[li][0] = [c for c in you if alive(c)]
+                self.lanes[li][1] = [c for c in foe if alive(c)]
                 events.append({"kind": "snapshot", **self._snapshot()})
         return events
 
@@ -725,6 +861,8 @@ class LaneGame:
         order = list(self.staged[0]) + list(self.staged[1])
         for pc, li in order:
             pc.revealed = True
+            if pc.owner == 0:
+                self._played.add(pc.card.id)     # committed to the board -> full XP
             events.append({"kind": "reveal", "uid": pc.uid, "owner": pc.owner,
                            "lane": li, "card": self._payload(pc)})
             hits = self._reveal_effect(pc, li)
@@ -734,19 +872,22 @@ class LaneGame:
             events.append({"kind": "snapshot", **self._snapshot()})
         # -- combat: opposing cards attack, take damage, and can die ---------
         events.extend(self._combat_events())
-        # -- round scoring: a point for each lane you lead this round --------
+        # -- round scoring: a point per led lane (Golden lanes pay double) ---
         led = {0: 0, 1: 0}
         for li in range(LANES):
             h, b = self._lane_totals(li)
+            pts = 2 if self.lane_mods[li] == "golden" else 1
             side = "you" if h > b else "foe" if b > h else "tie"
             if side == "you":
-                self.points[0] += 1
+                self.points[0] += pts
                 led[0] += 1
             elif side == "foe":
-                self.points[1] += 1
+                self.points[1] += pts
                 led[1] += 1
-            events.append({"kind": "score", "lane": li, "side": side,
+            events.append({"kind": "score", "lane": li, "side": side, "pts": pts,
                            "you": self.points[0], "foe": self.points[1]})
+        if led[0] == LANES:
+            self._sweeps += 1              # a full-board round (star objective)
         self._narrate_turn(led)
         self.staged = {0: [], 1: []}
         if self.turn >= MAX_TURNS:
@@ -763,12 +904,14 @@ class LaneGame:
             for pc, li in self.staged[owner]:
                 note = f" ({pc.card.text})" if pc.card.ability else ""
                 self.log.append(f"R{self.turn}: {who[owner]} played "
-                                f"{pc.card.name} in Lane {li + 1}.{note}")
-        self.log.append(f"R{self.turn}: lanes led — you {led[0]}, opp {led[1]}."
+                                f"{pc.card.name} in Panel {li + 1}.{note}")
+        self.log.append(f"R{self.turn}: panels led — you {led[0]}, opp {led[1]}."
                         f"  Score {self.points[0]}–{self.points[1]}.")
 
     def _finish(self):
         self.over = True
+        self._survived = sorted({pc.card.id for li in range(LANES)
+                                 for pc in self.lanes[li][0]})
         p0, p1 = self.points[0], self.points[1]
         totals = {0: 0, 1: 0}
         for li in range(LANES):
@@ -813,6 +956,11 @@ class LaneGame:
         }
 
     def _hand_view(self, c, i):
+        # playable if it fits the budget in ANY open lane (Tailwind can make
+        # a card affordable there that the raw cost says isn't)
+        playable = not self.over and any(
+            self._space(0, li) and self.play_cost(c, li) <= self.energy
+            for li in range(LANES))
         return {
             "index": i,
             "name": c.name,
@@ -822,7 +970,7 @@ class LaneGame:
             "text": c.text,
             "art": c.art,
             "rarity": c.rarity,
-            "playable": c.cost <= self.energy and not self.over,
+            "playable": playable,
         }
 
     def state(self):
@@ -831,8 +979,10 @@ class LaneGame:
             eff = self._lane_eff(li)
             hcards, bcards = self.lanes[li][0], self.lanes[li][1]
             h_total, b_total = sum(eff[0]), sum(eff[1])
+            mk = self.lane_mods[li]
             lanes.append({
                 "index": li,
+                "mod": {"key": mk, **MODS[mk]} if mk else None,
                 # your cards always visible; opponent's hidden until revealed
                 "you": [self._card_view(pc, eff[0][j], False)
                         for j, pc in enumerate(hcards)],
@@ -851,7 +1001,7 @@ class LaneGame:
                 wins["you"] += 1
             elif L["leader"] == "foe":
                 wins["foe"] += 1
-        return {
+        st = {
             "started": True,
             "turn": self.turn,
             "maxTurns": MAX_TURNS,
@@ -876,6 +1026,16 @@ class LaneGame:
             "lanes": lanes,
             "log": self.log[-18:],
         }
+        if self.over and not self._legacy_stats:
+            # per-card performance so the client can award earned XP
+            st["matchStats"] = {
+                "played": sorted(self._played),
+                "kills": {str(k): v for k, v in self._kills.items()},
+                "survived": list(self._survived),
+                "deaths": self._deaths,
+                "sweeps": self._sweeps,
+            }
+        return st
 
     # -- stateless serialization (for serverless hosts, e.g. Vercel) ---------
     # The client holds the whole game as an opaque token and sends it back on
@@ -883,7 +1043,7 @@ class LaneGame:
     # new token. This removes the reliance on in-process global state.
     def serialize(self):
         rs = self.rng.getstate()                      # (version, tuple, gauss)
-        return {
+        d = {
             "rng": [rs[0], list(rs[1]), rs[2]],
             "decks": [[_card_dict(c) for c in d] for d in self.decks],
             "hands": [[_card_dict(c) for c in h] for h in self.hands],
@@ -903,7 +1063,19 @@ class LaneGame:
             "level": self.level,
             "botSkill": self.bot_skill,
             "botEnergyBonus": self.bot_energy_bonus,
+            "laneMods": list(self.lane_mods),
+            "played": sorted(self._played),
+            "kills": [[k, v] for k, v in self._kills.items()],
+            "survived": list(self._survived),
+            "deaths": self._deaths,
+            "sweeps": self._sweeps,
         }
+        if self._legacy_stats:
+            # keep a pre-stats token honest across round trips: dropping the
+            # keys re-marks it legacy on the next from_serialized
+            for k in ("played", "kills", "survived", "deaths", "sweeps"):
+                del d[k]
+        return d
 
     @classmethod
     def from_serialized(cls, data):
@@ -941,6 +1113,14 @@ class LaneGame:
         g.level = data["level"]
         g.bot_skill = data["botSkill"]
         g.bot_energy_bonus = data["botEnergyBonus"]
+        # newer fields default cleanly for tokens minted before they existed
+        g.lane_mods = list(data.get("laneMods") or [None] * LANES)
+        g._legacy_stats = "played" not in data
+        g._played = set(data.get("played") or [])
+        g._kills = {int(k): v for k, v in (data.get("kills") or [])}
+        g._survived = list(data.get("survived") or [])
+        g._deaths = data.get("deaths") or 0
+        g._sweeps = data.get("sweeps") or 0
         return g
 
 
@@ -961,26 +1141,30 @@ def _placed_dict(pc):
 
 
 if __name__ == "__main__":
-    # quick self-play sanity check
+    # quick self-play sanity check, sweeping every campaign level so all
+    # arena modifiers and bot skills get exercised
     import collections
-    tally = collections.Counter()
-    for s in range(300):
-        g = LaneGame(random.Random(s))
-        g.new_game()
-        while not g.over:
-            # trivial "human": play the cheapest card into the emptiest lane
-            hand = g.hands[0]
-            progressed = True
-            while progressed:
-                progressed = False
-                for i, c in enumerate(sorted(hand, key=lambda c: c.cost)):
-                    if c.cost <= g.energy:
-                        idx = g.hands[0].index(c)
-                        lane = min(range(LANES), key=lambda li: len(g.lanes[li][0]))
-                        if g.lanes[lane][0].__len__() < SLOTS_PER_LANE:
-                            g.stage(idx, lane)
-                            progressed = True
-                            break
-            g.end_turn()
-        tally[g.winner] += 1
-    print("300 self-play games (naive human vs bot):", dict(tally))
+    for lvl in range(len(LEVELS)):
+        tally = collections.Counter()
+        for s in range(30):
+            g = LaneGame(random.Random(lvl * 1000 + s))
+            g.new_game(level=lvl)
+            while not g.over:
+                # trivial "human": play the cheapest card into the emptiest lane
+                hand = g.hands[0]
+                progressed = True
+                while progressed:
+                    progressed = False
+                    for i, c in enumerate(sorted(hand, key=lambda c: c.cost)):
+                        if c.cost <= g.energy:
+                            idx = g.hands[0].index(c)
+                            lane = min(range(LANES), key=lambda li: len(g.lanes[li][0]))
+                            if g.lanes[lane][0].__len__() < SLOTS_PER_LANE:
+                                g.stage(idx, lane)
+                                progressed = True
+                                break
+                g.end_turn()
+            tally[g.winner] += 1
+        mods = "+".join(LEVELS[lvl]["mods"]) or "none"
+        print(f"L{lvl + 1:<2} {LEVELS[lvl]['name']:<20} "
+              f"(mods {mods}): {dict(tally)}")

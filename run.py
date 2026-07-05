@@ -6,7 +6,7 @@
   python run.py sim [N]          # balance simulation (N games per pairing)
   python run.py demo [a] [b]     # play one logged game between two archetypes
   python run.py play [you] [bot] # play the combat game in the terminal
-  python run.py gui [port]       # play SPARK: LANES in a browser (default port 8000)
+  python run.py gui [port]       # play SMUDGE: PANEL BRAWL in a browser (default port 8000)
   python run.py gui-combat [port]# play the original combat game in a browser
 """
 

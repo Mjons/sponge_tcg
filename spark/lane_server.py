@@ -1,4 +1,4 @@
-"""Local web server for SPARK: LANES (stdlib only)."""
+"""Local web server for SMUDGE: PANEL BRAWL (stdlib only)."""
 
 import json
 import os
@@ -105,7 +105,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(host="127.0.0.1", port=8000, open_browser=True):
     httpd = ThreadingHTTPServer((host, port), Handler)
     url = f"http://{host}:{port}"
-    print(f"SPARK: LANES running at {url}   (Ctrl-C to stop)", flush=True)
+    print(f"SMUDGE: PANEL BRAWL running at {url}   (Ctrl-C to stop)", flush=True)
     if open_browser:
         try:
             webbrowser.open(url)
