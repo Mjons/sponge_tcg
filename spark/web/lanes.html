@@ -1095,6 +1095,16 @@
         height: 1px;
         background: var(--line);
       }
+      a.ext {
+        color: var(--amber);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .gtdnote {
+        font-size: 11.5px;
+        color: var(--dim);
+        padding: 0 4px;
+      }
       .lvstars {
         font-size: 11px;
         letter-spacing: 2px;
@@ -3097,7 +3107,7 @@
         $("over").innerHTML = `<div class="setup">
           <h1 style="font-size:30px" class="win">◆ SMUDGE: PANEL BRAWL</h1>
           <div class="hint" style="color:var(--amber);font-weight:700;margin-top:-6px">
-            starring Smudge the Sponge · a Panel Haus game</div>
+            starring Smudge the Sponge · a <a class="ext" href="https://panelhaus.app" target="_blank" rel="noopener">Panel Haus</a> game</div>
           <div class="hint">Win levels to earn card picks, grind XP to level them
             up, and climb toward the Last Panel. Progress ${done}/${LEVELS.length} levels.</div>
           <button class="btn primary" style="font-size:16px;padding:12px 22px" onclick="showCampaign()">▶ Campaign</button>
@@ -3343,6 +3353,9 @@
         const st = deckStatus();
         $("over").innerHTML = `<div class="menu">
           <div class="menuhead"><b>Card Library — ${own}/${POOL.length}</b><button class="btn newbtn" onclick="openHome()">◀ Back</button></div>
+          <div class="gtdnote">Collecting counts: your collection feeds consideration for
+            <b>GTD</b> (guaranteed whitelist) spots in the upcoming <b>Smudgies</b> drop ·
+            <a class="ext" href="https://panelhaus.app" target="_blank" rel="noopener">panelhaus.app</a></div>
           <div class="libtoggle">
             <button class="segbtn${on("compact")}" onclick="setLibView('compact')">▦ Grid</button>
             <button class="segbtn${on("full")}" onclick="setLibView('full')">🃏 Full view</button>

@@ -33,9 +33,12 @@ python run.py gui 8080      # ...on a custom port
 ## SMUDGE: PANEL BRAWL (`python run.py gui`)
 
 **Starring Smudge the Sponge · a Panel Haus game.** The flagship attention
-funnel for the Panel Haus comic-creation studio: a **panel battler** (Marvel
-Snap-like) where the three battle columns are styled as **comic panels** and
-the roster is the studio's Smudgies mascot cast. Formerly _SPARK: LANES_ —
+funnel for the [Panel Haus](https://panelhaus.app) comic-creation studio: a
+**panel battler** (Marvel Snap-like) where the three battle columns are styled
+as **comic panels** and the roster is the studio's Smudgies mascot cast.
+In-game card collections feed consideration for **GTD (guaranteed whitelist)
+spots in the upcoming Smudgies drop** — the home screen links the studio and
+the Card Library carries the pitch where collectors are already counting. Formerly _SPARK: LANES_ —
 code, files, and API fields still say `lane` (renaming them would break
 nothing but churn everything; only player-facing copy is branded). Files:
 `spark/lanes.py` (engine + card set with perks + bot),
