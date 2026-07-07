@@ -1071,6 +1071,30 @@
         letter-spacing: 2px;
         flex: 0 0 auto;
       }
+      .lvdraw {
+        font-size: 10px;
+        letter-spacing: 0;
+        color: var(--dim);
+        margin-left: 3px;
+      }
+      .actdiv {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--dim);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin: 6px 0 -1px;
+      }
+      .actdiv::before,
+      .actdiv::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
       .lvstars {
         font-size: 11px;
         letter-spacing: 2px;
@@ -2780,6 +2804,69 @@
           { desc: "Kill 6+ enemy cards", check: (c) => c.kills >= 6 },
           { desc: "Win by 5+ points", check: (c) => c.margin >= 5 },
         ],
+        [
+          { desc: "Win by 3+ points", check: (c) => c.margin >= 3 },
+          {
+            desc: "End with 5+ of your cards alive",
+            check: (c) => c.survivors >= 5,
+          },
+        ],
+        [
+          { desc: "Kill 4+ enemy cards", check: (c) => c.kills >= 4 },
+          {
+            desc: "Lead all 3 panels in one round",
+            check: (c) => c.sweeps >= 1,
+          },
+        ],
+        [
+          { desc: "Score 15+ points", check: (c) => c.score >= 15 },
+          {
+            desc: "Play 7+ ability cards",
+            check: (c) => c.abilityPlayed >= 7,
+          },
+        ],
+        [
+          { desc: "Win without losing a card", check: (c) => c.deaths === 0 },
+          {
+            desc: "Lead every modifier panel at the end",
+            check: (c) => c.modLanesLed,
+          },
+        ],
+        [
+          {
+            desc: "No legendaries in your deck",
+            check: (c) => c.deckCards.every((x) => x.rarity !== "legendary"),
+          },
+          { desc: "Kill 5+ enemy cards", check: (c) => c.kills >= 5 },
+        ],
+        [
+          { desc: "Win by 6+ points", check: (c) => c.margin >= 6 },
+          {
+            desc: "Lead all 3 panels in 2 different rounds",
+            check: (c) => c.sweeps >= 2,
+          },
+        ],
+        [
+          { desc: "Score 16+ points", check: (c) => c.score >= 16 },
+          { desc: "Lose no more than 2 cards", check: (c) => c.deaths <= 2 },
+        ],
+        [
+          {
+            desc: "10+ cards costing ≤4 in your deck",
+            check: (c) => c.deckCards.filter((x) => x.cost <= 4).length >= 10,
+          },
+          {
+            desc: "Lead every modifier panel at the end",
+            check: (c) => c.modLanesLed,
+          },
+        ],
+        [
+          {
+            desc: "Lead all 3 panels at the end",
+            check: (c) => c.lanesLed === 3,
+          },
+          { desc: "Win by 7+ points", check: (c) => c.margin >= 7 },
+        ],
       ];
       function starCtx() {
         const s = STATE,
@@ -3012,7 +3099,7 @@
           <div class="hint" style="color:var(--amber);font-weight:700;margin-top:-6px">
             starring Smudge the Sponge · a Panel Haus game</div>
           <div class="hint">Win levels to earn card picks, grind XP to level them
-            up, and climb toward the Kraken. Progress ${done}/${LEVELS.length} levels.</div>
+            up, and climb toward the Last Panel. Progress ${done}/${LEVELS.length} levels.</div>
           <button class="btn primary" style="font-size:16px;padding:12px 22px" onclick="showCampaign()">▶ Campaign</button>
           <button class="btn" style="font-size:15px;padding:10px 20px" onclick="SFX.play('libraryOpen');showLibrary()">▤ Card Library</button>
           <button class="btn" style="font-size:15px;padding:10px 20px" onclick="showOptions()">⚙ Options</button>
@@ -3087,7 +3174,16 @@
         else openHome();
       }
       function showCampaign() {
+        // first playable level (unlocked, unbeaten) — the list scrolls to it
+        const cur = LEVELS.find(
+          (L) => L.id <= PROG.unlocked && !PROG.beaten[L.id],
+        );
+        let lastAct = null;
         const rows = LEVELS.map((L) => {
+          const divider =
+            L.act && L.act !== lastAct
+              ? ((lastAct = L.act), `<div class="actdiv">${L.act}</div>`)
+              : "";
           const locked = L.id > PROG.unlocked;
           const beaten = PROG.beaten[L.id];
           const tag = locked ? "🔒" : beaten ? "✓" : "▶";
@@ -3095,9 +3191,14 @@
           const click = locked
             ? `onclick="SFX.play('levelLocked')"`
             : `onclick="startLevel(${L.id})"`;
+          // icons show the POSSIBLE rules; "n of m" says how many are drawn
+          const drawn =
+            L.mods && L.nmods < L.mods.length
+              ? `<small class="lvdraw">${L.nmods} of ${L.mods.length}</small>`
+              : "";
           const micons =
             L.mods && L.mods.length
-              ? `<span class="lvmods" title="${L.mods.map((m) => m.name + ": " + m.desc).join("&#10;")}">${L.mods.map((m) => m.icon).join("")}</span>`
+              ? `<span class="lvmods" title="Draws ${L.nmods} of:&#10;${L.mods.map((m) => m.name + ": " + m.desc).join("&#10;")}">${L.mods.map((m) => m.icon).join("")}${drawn}</span>`
               : "";
           // sub line: flavor until beaten, then the remaining objectives
           const st = PROG.stars[L.id] || [];
@@ -3113,7 +3214,7 @@
           const lvstars = locked
             ? ""
             : `<span class="lvstars">${"★".repeat(n)}${"☆".repeat(3 - n)}</span>`;
-          return `<div class="${cls}" ${click}>
+          return `${divider}<div class="${cls}" ${cur && L.id === cur.id ? 'id="lvlcur"' : ""} ${click}>
             <span class="lvnum">${tag} ${L.id + 1}</span>
             <span class="lvname">${L.name}${lvstars}<small>${sub}</small></span>
             ${micons}
@@ -3123,6 +3224,8 @@
           <div class="menuhead"><b>Campaign — ★ ${totalStars()}/${LEVELS.length * 3}</b><button class="btn newbtn" onclick="openHome()">◀ Back</button></div>
           <div class="lvlist">${rows}</div></div>`;
         $("overlay").classList.remove("hidden");
+        const curEl = document.getElementById("lvlcur");
+        if (curEl) curEl.scrollIntoView({ block: "center" });
       }
       function unlockLevelOf(id) {
         for (let i = 0; i < LEVELS.length; i++)

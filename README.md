@@ -66,7 +66,7 @@ nothing but churn everything; only player-facing copy is branded). Files:
   just like the combat pool — seven quietly over-budget cards were brought
   back in line when the check landed. Attack/Power splits remain _flagged for
   playtesting_ (combat makes boards churn fast).
-- **Campaign + collection (RPG grind):** a home menu with **10 levels** that
+- **Campaign + collection (RPG grind):** a home menu with **19 levels** that
   unlock in order (beat one → unlock the next). Difficulty scales via bot skill
   (0→3, combat-aware at the top), opponent deck bias (random→legendary), and
   boss handicaps (+energy / +cards). A **Card Library** tracks every card's
@@ -81,7 +81,7 @@ nothing but churn everything; only player-facing copy is branded). Files:
   level ("win without losing a card", "lead every modifier lane", "8+ cards
   costing ≤3 in your deck", …). Objectives are shown on beaten levels'
   campaign rows, evaluated on victory, and each **first-time star queues one
-  bonus card pick** — the campaign header tracks ★ n/30. The Library doubles
+  bonus card pick** — the campaign header tracks ★ n/57. The Library doubles
   as a **deck builder**: tap ＋/✓ on
   an owned card (or use its popup) to hand-pick your 16 — ✨ Auto-fill restores
   the strongest-16 auto pick, and a half-finished deck never enters a match

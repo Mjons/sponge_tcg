@@ -331,8 +331,13 @@ MODS = {
                       desc="Cards here have +1 Power while in this panel."),
 }
 
+# (first level index, act title) — the campaign list draws a divider at each
+ACTS = [(0, "Act One"), (10, "Act Two")]
+
 # mods = this level's themed pool of possible lane rules; nmods = how many
 # are drawn (each to a distinct random lane) when a match starts.
+# boss=True pins the "Boss" difficulty label (a set-piece billing, not a
+# score tier — without it the label tops out at "Very Hard").
 LEVELS = [
     dict(name="Tide Pool Tutorial", sub="A gentle warm-up.",     skill=0, bias=0, energy=0, opening=0,
          mods=(), nmods=0),
@@ -352,12 +357,34 @@ LEVELS = [
          mods=("deadzone", "sanctum", "golden"), nmods=2),
     dict(name="Ember Throne",       sub="A blazing gauntlet.",    skill=3, bias=2, energy=0, opening=1,
          mods=("volcanic", "golden", "deadzone"), nmods=2),
-    dict(name="Kraken's Abyss",     sub="The final boss.",        skill=3, bias=2, energy=0, opening=2,
-         mods=("sanctum", "volcanic", "deadzone", "golden", "overgrown"), nmods=3),
+    dict(name="Kraken's Abyss",     sub="Act One's final boss.",  skill=3, bias=2, energy=0, opening=2,
+         mods=("sanctum", "volcanic", "deadzone", "golden", "overgrown"), nmods=3, boss=True),
+    # --- Act Two: past the abyss the campaign climbs again, now leaning on
+    # the bot's energy handicap (unused in Act One) for the top of the curve.
+    dict(name="Riptide Shallows",   sub="The tide turns.",        skill=2, bias=1, energy=0, opening=0,
+         mods=("overgrown", "tailwind"), nmods=1),
+    dict(name="Boardwalk Rumble",   sub="Carnival muscle.",       skill=2, bias=2, energy=0, opening=0,
+         mods=("golden", "tailwind", "overgrown"), nmods=2),
+    dict(name="Clockwork Colosseum", sub="Gears never tire.",     skill=3, bias=1, energy=0, opening=0,
+         mods=("volcanic", "deadzone", "tailwind"), nmods=2),
+    dict(name="Frostbite Dojo",     sub="Cold, precise strikes.", skill=3, bias=2, energy=0, opening=0,
+         mods=("sanctum", "deadzone", "overgrown"), nmods=2),
+    dict(name="Neon Rooftops",      sub="High stakes, long falls.", skill=3, bias=2, energy=0, opening=1,
+         mods=("golden", "deadzone", "volcanic"), nmods=2),
+    dict(name="Monsoon Citadel",    sub="The storm never lets up.", skill=3, bias=2, energy=1, opening=0,
+         mods=("sanctum", "tailwind", "volcanic", "overgrown"), nmods=2),
+    dict(name="Obsidian Trench",    sub="Darker than the abyss.", skill=3, bias=2, energy=1, opening=1,
+         mods=("golden", "volcanic", "deadzone", "sanctum"), nmods=3),
+    dict(name="Court of Two Crowns", sub="Royalty fights dirty.", skill=3, bias=2, energy=1, opening=2,
+         mods=("golden", "deadzone", "sanctum", "overgrown"), nmods=3),
+    dict(name="The Last Panel",     sub="Every rule at once.",    skill=3, bias=2, energy=2, opening=2,
+         mods=("volcanic", "sanctum", "tailwind", "golden", "deadzone", "overgrown"), nmods=3, boss=True),
 ]
 
 
 def _difficulty_label(cfg):
+    if cfg.get("boss"):
+        return "Boss"
     score = cfg["skill"] + cfg["bias"] + cfg["energy"] + cfg["opening"]
     if score <= 1:
         return "Easy"
@@ -365,15 +392,24 @@ def _difficulty_label(cfg):
         return "Normal"
     if score <= 5:
         return "Hard"
-    if score <= 7:
-        return "Very Hard"
-    return "Boss"
+    return "Very Hard"
+
+
+def _act_title(i):
+    title = ""
+    for start, name in ACTS:
+        if i >= start:
+            title = name
+    return title
 
 
 def levels_meta():
     return [{"id": i, "name": L["name"], "sub": L["sub"],
              "difficulty": _difficulty_label(L),
-             "mods": [{"key": k, **MODS[k]} for k in L["mods"]]}
+             "act": _act_title(i),
+             "mods": [{"key": k, **MODS[k]} for k in L["mods"]],
+             # how many of those mods actually land (clamped like _draw_mods)
+             "nmods": min(L.get("nmods", 0), len(L["mods"]), LANES)}
             for i, L in enumerate(LEVELS)]
 
 
